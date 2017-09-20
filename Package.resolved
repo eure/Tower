@@ -1,0 +1,43 @@
+{
+  "object": {
+    "pins": [
+      {
+        "package": "Bulk",
+        "repositoryURL": "https://github.com/muukii/Bulk.git",
+        "state": {
+          "branch": null,
+          "revision": "2d2509429d3fdd810a521ad151fa7a148e04263b",
+          "version": "0.3.0"
+        }
+      },
+      {
+        "package": "Require",
+        "repositoryURL": "https://github.com/muukii/Require.git",
+        "state": {
+          "branch": null,
+          "revision": "f5e3d780e35bec749d428f0076222786ef9dc8af",
+          "version": "1.1.0"
+        }
+      },
+      {
+        "package": "RxSwift",
+        "repositoryURL": "https://github.com/ReactiveX/RxSwift",
+        "state": {
+          "branch": null,
+          "revision": "a0bf386834ca09e0438e2edf03d740eac3c4a6ce",
+          "version": "4.0.0-beta.0"
+        }
+      },
+      {
+        "package": "ShellOut",
+        "repositoryURL": "https://github.com/JohnSundell/ShellOut.git",
+        "state": {
+          "branch": null,
+          "revision": "c21f7a0e891e1301eac0a1b400857173f98aab45",
+          "version": "1.2.1"
+        }
+      }
+    ]
+  },
+  "version": 1
+}
