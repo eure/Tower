@@ -80,36 +80,65 @@ ENV  : \(try! shellOut(to: "env"))
 """
 )
 
-
-
     createTowerWorkingDirectory()
+
+    let queue = PublishSubject<Single<Void>>()
 
     Observable<Int>
       .interval(pollingInterval, scheduler: MainScheduler.instance)
       .map { _ in }
       .startWith(())
       .do(onNext: {
-        Log.verbose("On")
+//        Log.verbose("On")
       })
-      .do(onNext: { [unowned self] in
-        self.fetch()
-        self.checkoutTargetBranches()
-      })
-      .map { () -> Observable<Single<Void>> in
-        Observable.from(
-          self.createBranchContexts().map { c in
-            Single.create { o in
-              c.run()
-              o(.success(()))
-              return Disposables.create()
+      .flatMapFirst {
+        Single<Void>.create { o in
+          self.fetch()
+          self.checkoutTargetBranches()
+          o(.success(()))
+          return Disposables.create()
+        }
+      }
+      .flatMap { () -> Single<[Single<Void>]> in
+
+        let tasks = self.createBranchContexts().map { c -> Maybe<Single<Void>> in
+          Single<Bool>.create { o in
+            let r = c.hasNewCommits()
+            o(.success(r))
+            return Disposables.create()
             }
-          }
-        )
+            .filter { $0 == true }
+            .map { _ in c }
+            .map { c -> Single<Void> in
+              Single.create { o in
+                c.run()
+                o(.success(()))
+                return Disposables.create()
+              }
+            }
+            .subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
+        }
+
+        let _tasks = Observable.from(tasks)
+          .merge(maxConcurrent: 10)
+          .toArray()
+          .asSingle()
+
+        return _tasks
       }
-      .observeOn(ConcurrentDispatchQueueScheduler(qos: .default))
-      .flatMap { a in
-        a.merge(maxConcurrent: 4)
+      .subscribe(onNext: { tasks in
+        tasks.forEach { queue.onNext($0) }
+      })
+      .disposed(by: disposeBag)
+
+    queue
+      .do(onNext: { _ in
+        Log.info("Add Task")
+      })
+      .map {
+        $0.subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
       }
+      .merge(maxConcurrent: 2)
       .subscribe()
       .disposed(by: disposeBag)
   }
@@ -240,16 +269,16 @@ final class BranchContext {
   }
 
   func run() {
-    if fetch() {
-      Log.info("[Branch : \(branchName)]", "has new commits")
+    if hasNewCommits() {
+      
       pull()
       runTowerfile()
     }
   }
 
-  private func fetch() -> Bool {
+  func hasNewCommits() -> Bool {
 
-    Log.info("[Branch : \(branchName)]", "fetch")
+    Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
 
     do {
       let result = try shellOut(to: "git fetch", at: path)
