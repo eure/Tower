@@ -318,8 +318,12 @@ final class BranchContext {
   }
 
   func run() {
-    pull()
-    runTowerfile()
+    do {
+      try pull()
+      try runTowerfile()
+    } catch {
+      Log.error(error)
+    }
   }
 
   func hasNewCommits() -> Bool {
@@ -345,7 +349,7 @@ final class BranchContext {
     }
   }
 
-  private func pull() {
+  private func pull() throws {
     do {
       Log.verbose("[Branch : \(branchName)", "pulling")
       try shellOut(to: "git pull \(branchName) origin/\(branchName)", at: path)
@@ -353,11 +357,12 @@ final class BranchContext {
       precondition(hasNewCommits() == false, "Pull has failed")
 
     } catch {
-      Log.error("[Branch : \(branchName)] Pull failed", error)
+      Log.error("[Branch : \(branchName)] Pull failed", (error as! ShellOutError).message)
+      throw error
     }
   }
 
-  private func runTowerfile() {
+  private func runTowerfile() throws {
 
     do {
       Log.info("[Branch : \(branchName)]", "Run towerfile")
@@ -391,6 +396,15 @@ final class BranchContext {
     }
   }
 }
+
+func printError(e: Error) {
+  if e is ShellOutError {
+    Log.error((e as! ShellOutError).message)
+  } else {
+    Log.error(e)
+  }
+}
+
 extension Process {
 
   @discardableResult func launchBash(with command: String, output: @escaping (String) -> Void, error: @escaping (String) -> Void) -> Int32 {
