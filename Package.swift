@@ -21,7 +21,6 @@ let package = Package(
     .package(url: "https://github.com/ReactiveX/RxSwift", .exact("4.0.0-beta.0")),
     .package(url: "https://github.com/muukii/Require.git", from: "1.1.0"),
     .package(url: "https://github.com/muukii/Bulk.git", from: "0.3.0"),
-    .package(url: "https://github.com/vapor/vapor.git", from: "2.2.2"),
   ],
   targets: [
     .target(

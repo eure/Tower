@@ -348,7 +348,10 @@ final class BranchContext {
   private func pull() {
     do {
       Log.verbose("[Branch : \(branchName)", "pulling")
-      try shellOut(to: "git pull", at: path)
+      try shellOut(to: "git pull \(branchName) origin/\(branchName)", at: path)
+
+      precondition(hasNewCommits() == false, "Pull has failed")
+
     } catch {
       Log.error("[Branch : \(branchName)] Pull failed", error)
     }
