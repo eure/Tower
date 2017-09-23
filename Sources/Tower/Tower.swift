@@ -108,6 +108,7 @@ public final class Session {
   private let workingDirName = ".tower_work"
   private let disposeBag = DisposeBag()
   private let pollingInterval: RxTimeInterval = 20
+  private let queueStack = QueueStack()
 
   public init(watchPath: String?) {
     self.watchPath = watchPath ?? FileManager.default.currentDirectoryPath
@@ -129,8 +130,6 @@ public final class Session {
 
     createTowerWorkingDirectory()
 
-    let queue = PublishSubject<Single<Void>>()
-
     Observable<Int>
       .interval(pollingInterval, scheduler: MainScheduler.instance)
       .map { _ in }
@@ -146,9 +145,10 @@ public final class Session {
           return Disposables.create()
         }
       }
-      .flatMap { () -> Single<[Single<Void>]> in
+      .flatMap { () -> Single<[(String, Single<Void>)]> in
 
-        let tasks = self.createBranchContexts().map { c -> Maybe<Single<Void>> in
+        let tasks = self.createBranchContexts()
+          .map { c -> Maybe<(String, Single<Void>)> in
           Single<Bool>.create { o in
             let r = c.hasNewCommits()
             o(.success(r))
@@ -158,12 +158,15 @@ public final class Session {
               $0 == true
             }
             .map { _ in c }
-            .map { c -> Single<Void> in
-              Single.create { o in
-                c.run()
-                o(.success(()))
-                return Disposables.create()
-              }
+            .map { c -> (String, Single<Void>) in
+              (
+                c.branchName,
+                Single.create { o in
+                  c.run()
+                  o(.success(()))
+                  return Disposables.create()
+                }
+              )
             }
             .subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
         }
@@ -175,21 +178,13 @@ public final class Session {
 
         return _tasks
       }
-      .subscribe(onNext: { tasks in
-        tasks.forEach { queue.onNext($0) }
+      .subscribe(onNext: { [weak self] tasks in
+        tasks.forEach {
+          self?.queueStack.add($0.1, forKey: $0.0)
+        }
       })
       .disposed(by: disposeBag)
 
-    queue
-      .do(onNext: { _ in
-        Log.info("Add Task")
-      })
-      .map {
-        $0.subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
-      }
-      .merge()
-      .subscribe()
-      .disposed(by: disposeBag)
   }
 
   private func fetch() {
@@ -337,9 +332,12 @@ final class BranchContext {
 
       Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
       let result = try shellOut(to: "git fetch", at: path)
+
       if result.contains("(forced update)") {
-        try! shellOut(to: "git reset --hard origin/\(branchName)", at: path)
+        try shellOut(to: "git reset --hard origin/\(branchName)", at: path)
+        return true
       }
+      
       let r = try! shellOut(to: "git rev-list --count \(branchName)...origin/\(branchName)", at: path)
       let behinded = (Int(r) ?? 0) > 0
       return behinded
@@ -352,7 +350,7 @@ final class BranchContext {
   private func pull() throws {
     do {
       Log.verbose("[Branch : \(branchName)", "pulling")
-      try shellOut(to: "git pull origin \(branchName)", at: path)
+      try shellOut(to: "git reset --hard origin/\(branchName)", at: path)
 
       precondition(hasNewCommits() == false, "Pull has failed")
 
