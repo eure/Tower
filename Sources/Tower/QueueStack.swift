@@ -25,6 +25,7 @@ final class QueueStack {
       queues[key] = q
     }
 
+    q.onNext(o)
   }
 
   func createQueue() -> PublishSubject<Single<Void>> {
