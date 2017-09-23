@@ -4,13 +4,58 @@ import RxSwift
 import Bulk
 import ShellOut
 
+struct TowerFormatter: Bulk.Formatter {
+
+  public typealias FormatType = String
+
+  public struct LevelString {
+    public var verbose = "📜"
+    public var debug = "📃"
+    public var info = "💡"
+    public var warn = "⚠️"
+    public var error = "❌"
+  }
+
+  public let dateFormatter: DateFormatter
+
+  public var levelString = LevelString()
+
+  public init() {
+
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+    self.dateFormatter = formatter
+
+  }
+
+  public func format(log: Log) -> FormatType {
+
+    let level: String = {
+      switch log.level {
+      case .verbose: return levelString.verbose
+      case .debug: return levelString.debug
+      case .info: return levelString.info
+      case .warn: return levelString.warn
+      case .error: return levelString.error
+      }
+    }()
+
+    let timestamp = dateFormatter.string(from: log.date)
+
+    let string = "[\(timestamp)] \(level) \(log.body)"
+
+    return string
+  }
+}
+
 let Log: Logger = {
 
   let l = Logger()
+
   l.add(pipeline: Pipeline(
     plugins: [],
     targetConfiguration: Pipeline.TargetConfiguration(
-      formatter: BasicFormatter(),
+      formatter: TowerFormatter(),
       target: ConsoleTarget()
     )
     )
@@ -56,7 +101,9 @@ public final class Session {
 
   public let watchPath: String
   public let branchPattern: String = "v[0-9]+.*branch"
-//  public let branchPattern: String = ""
+//  public let branchPattern: String = "v15.1-branch"
+
+  //  public let branchPattern: String = ""
   public let remote: String = "origin"
   private let workingDirName = ".tower_work"
   private let disposeBag = DisposeBag()
@@ -74,11 +121,11 @@ public final class Session {
 
     Log.info("""
 
-PATH : \(try! shellOut(to: "echo $PATH"))
+      PATH : \(try! shellOut(to: "echo $PATH"))
       
-ENV  : \(try! shellOut(to: "env"))
-"""
-)
+      ENV  : \(try! shellOut(to: "env"))
+      """
+    )
 
     createTowerWorkingDirectory()
 
@@ -89,7 +136,7 @@ ENV  : \(try! shellOut(to: "env"))
       .map { _ in }
       .startWith(())
       .do(onNext: {
-//        Log.verbose("On")
+        //        Log.verbose("On")
       })
       .flatMapFirst {
         Single<Void>.create { o in
@@ -107,7 +154,9 @@ ENV  : \(try! shellOut(to: "env"))
             o(.success(r))
             return Disposables.create()
             }
-            .filter { $0 == true }
+            .filter {
+              $0 == true
+            }
             .map { _ in c }
             .map { c -> Single<Void> in
               Single.create { o in
@@ -138,7 +187,7 @@ ENV  : \(try! shellOut(to: "env"))
       .map {
         $0.subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
       }
-      .merge(maxConcurrent: 2)
+      .merge()
       .subscribe()
       .disposed(by: disposeBag)
   }
@@ -269,18 +318,20 @@ final class BranchContext {
   }
 
   func run() {
-    if hasNewCommits() {
-      
-      pull()
-      runTowerfile()
-    }
+    pull()
+    runTowerfile()
   }
 
   func hasNewCommits() -> Bool {
 
-    Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
-
     do {
+      let branch = try shellOut(to: "git symbolic-ref --short HEAD", at: path)
+
+      if branchName != branch {
+        Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
+      }
+
+      Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
       let result = try shellOut(to: "git fetch", at: path)
       if result.contains("(forced update)") {
         try! shellOut(to: "git reset --hard origin/\(branchName)", at: path)
@@ -296,21 +347,99 @@ final class BranchContext {
 
   private func pull() {
     do {
-      let r = try shellOut(to: "git pull", at: path)
-      Log.verbose("[Branch : \(branchName)", "pull\n", r)
+      Log.verbose("[Branch : \(branchName)", "pulling")
+      try shellOut(to: "git pull", at: path)
     } catch {
-      Log.error(error)
+      Log.error("[Branch : \(branchName)] Pull failed", error)
     }
   }
 
   private func runTowerfile() {
+
     do {
+      Log.info("[Branch : \(branchName)]", "Run towerfile")
       let log = try shellOut(to: "git log -n 1", at: path)
-      Log.info("[Branch : \(branchName)", "\n", log, "\n", "Run towerfile")
-      let r = try shellOut(to: "sh .towerfile", at: path)
-      Log.verbose("\n", r)
+      Log.info("[Branch : \(branchName)]\n\(log)", "\n")
+
+      let p = Process()
+      p.launchBash(
+//        with: "id -un",
+        with: "cd \"\(path)\" && sh .towerfile",
+        output: { (s) in
+//          print(s)
+//          Log.info("[Branch : \(self.branchName)] [towerfile] =>", s)
+          print(s, separator: "", terminator: "")
+      },
+        error: { (s) in
+//          print(s)
+//          Log.error("[Branch : \(self.branchName)] [towerfile] =>", s)
+          print(s, separator: "", terminator: "")
+      })
+
     } catch {
       Log.error(error)
     }
+  }
+}
+extension Process {
+
+  @discardableResult func launchBash(with command: String, output: @escaping (String) -> Void, error: @escaping (String) -> Void) -> Int32 {
+
+    launchPath = "/bin/bash"
+    arguments = ["-l", "-c", "export LANG=en_US.UTF-8 && " + command]
+
+    let outputPipe = Pipe()
+    standardOutput = outputPipe
+
+    let errorPipe = Pipe()
+    standardError = errorPipe
+
+    do {
+      outputPipe.fileHandleForReading.readabilityHandler = { f in
+
+        let d = f.availableData
+
+        guard d.count > 0 else { return }
+
+        output(d.shellOutput())
+      }
+    }
+
+    do {
+      errorPipe.fileHandleForReading.readabilityHandler = { f in
+        let d = f.availableData
+
+        guard d.count > 0 else { return }
+
+        error(d.shellOutput())
+      }
+    }
+
+    launch()
+
+    waitUntilExit()
+
+    #if !os(Linux)
+      outputPipe.fileHandleForReading.readabilityHandler = nil
+      errorPipe.fileHandleForReading.readabilityHandler = nil
+    #endif
+
+    return terminationStatus
+  }
+}
+
+private extension Data {
+  func shellOutput() -> String {
+    guard let output = String(data: self, encoding: .utf8) else {
+      return ""
+    }
+
+//    guard !output.hasSuffix("\n") else {
+//      let outputLength = output.distance(from: output.startIndex, to: output.endIndex)
+//      return output.substring(to: output.index(output.startIndex, offsetBy: outputLength - 1))
+//    }
+
+    return output
+
   }
 }
