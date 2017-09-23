@@ -79,4 +79,4 @@ func run(c: String) {
 }
 
 run(c: "echo $PATH")
-run(c: "bundle install --path bundler")
+run(c: "sh .towerfile")

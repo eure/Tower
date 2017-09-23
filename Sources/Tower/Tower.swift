@@ -361,18 +361,25 @@ final class BranchContext {
       let log = try shellOut(to: "git log -n 1", at: path)
       Log.info("[Branch : \(branchName)]\n\(log)", "\n")
 
+      do {
       let p = Process()
       p.launchBash(
-//        with: "id -un",
-        with: "cd \"\(path)\" && sh .towerfile",
+        with: "echo $PATH",
         output: { (s) in
-//          print(s)
-//          Log.info("[Branch : \(self.branchName)] [towerfile] =>", s)
           print(s, separator: "", terminator: "")
       },
         error: { (s) in
-//          print(s)
-//          Log.error("[Branch : \(self.branchName)] [towerfile] =>", s)
+          print(s, separator: "", terminator: "")
+      })
+      }
+
+      let p = Process()
+      p.launchBash(
+        with: "cd \"\(path)\" && sh .towerfile",
+        output: { (s) in
+          print(s, separator: "", terminator: "")
+      },
+        error: { (s) in
           print(s, separator: "", terminator: "")
       })
 
