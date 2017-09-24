@@ -37,11 +37,33 @@ final class QueueStack {
         SlackSendMessage.send(
           message: SlackMessage(
             channel: nil,
-            text: "Add Task on \(key)",
+            text: "",
             as_user: true,
             parse: "full",
             username: "Tower",
-            attachments: nil)
+            attachments: [
+              .init(
+                color: "",
+                pretext: "",
+                authorName: "Tower Status",
+                authorIcon: "",
+                title: "",
+                titleLink: "",
+                text: "Add Task",
+                imageURL: "",
+                thumbURL: "",
+                footer: "",
+                footerIcon: "",
+                fields: [
+                  .init(
+                    title: "Branch",
+                    value: key,
+                    short: false
+                  )
+                ]
+              )
+            ]
+          )
         )
 
       })
@@ -49,15 +71,7 @@ final class QueueStack {
       .mapWithIndex { task, i in
         task.do(
           onSubscribed: {
-            SlackSendMessage.send(
-              message: SlackMessage(
-                channel: nil,
-                text: "Start Task \(i) on \(key)",
-                as_user: true,
-                parse: "full",
-                username: "Tower",
-                attachments: nil)
-            )
+           
         },
           onDispose: {
 

@@ -15,6 +15,16 @@ struct SlackMessage : Codable {
       let title: String
       let value: String
       let short: Bool
+
+      init(
+        title: String,
+        value: String,
+        short: Bool
+        ) {
+        self.title = title
+        self.value = value
+        self.short = short
+      }
     }
 
     let color: String
@@ -29,6 +39,36 @@ struct SlackMessage : Codable {
     let thumb_url: String
     let footer: String
     let footer_icon: String
+
+    init(
+      color: String,
+      pretext: String,
+      authorName: String,
+      authorIcon: String,
+      title: String,
+      titleLink: String,
+      text: String,
+      imageURL: String,
+      thumbURL: String,
+      footer: String,
+      footerIcon: String,
+      fields: [Field]
+      ) {
+
+      self.color = color
+      self.pretext = pretext
+      self.author_name = authorName
+      self.author_icon = authorIcon
+      self.title = title
+      self.title_link = titleLink
+      self.text = text
+      self.image_url = imageURL
+      self.thumb_url = thumbURL
+      self.footer = footer
+      self.footer_icon = footerIcon
+      self.fields = fields
+
+    }
   }
 
   var channel: String?
@@ -43,7 +83,7 @@ enum SlackSendMessage {
 
   static func send(message: SlackMessage) {
 
-    send(message: message, to: "https://hooks.slack.com/services/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")
+    send(message: message, to: "https://hooks.slack.com/services/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")
   }
 
   static func send(message: SlackMessage, to urlString: String) {

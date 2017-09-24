@@ -101,9 +101,6 @@ public final class Session {
 
   public let watchPath: String
   public let branchPattern: String = "v[0-9]+.*branch"
-//  public let branchPattern: String = "v15.1-branch"
-
-  //  public let branchPattern: String = ""
   public let remote: String = "origin"
   private let workingDirName = ".tower_work"
   private let disposeBag = DisposeBag()
@@ -131,11 +128,27 @@ public final class Session {
     SlackSendMessage.send(
       message: SlackMessage(
       channel: nil,
-      text: "Launch Tower",
+      text: "",
       as_user: true,
       parse: "full",
       username: "Tower",
-      attachments: nil)
+      attachments: [
+        .init(
+          color: "",
+          pretext: "",
+          authorName: "Tower Status",
+          authorIcon: "",
+          title: "",
+          titleLink: "",
+          text: "Launch Tower",
+          imageURL: "",
+          thumbURL: "",
+          footer: "",
+          footerIcon: "",
+          fields: []
+        )
+        ]
+      )
     )
 
     createTowerWorkingDirectory()
@@ -323,11 +336,127 @@ final class BranchContext {
   }
 
   func run() {
+
     do {
       try pull()
+
+      let log = try lastCommit()
+
+      SlackSendMessage.send(
+        message: SlackMessage(
+          channel: nil,
+          text: "",
+          as_user: true,
+          parse: "full",
+          username: "Tower",
+          attachments: [
+            .init(
+              color: "",
+              pretext: "",
+              authorName: "Tower Status",
+              authorIcon: "",
+              title: "",
+              titleLink: "",
+              text: "Task Started",
+              imageURL: "",
+              thumbURL: "",
+              footer: "",
+              footerIcon: "",
+              fields: [
+                .init(
+                  title: "Branch",
+                  value: branchName,
+                  short: false
+                ),
+                .init(
+                  title: "Commit",
+                  value: log,
+                  short: false
+                )
+              ]
+            )
+          ]
+        )
+      )
+
       try runTowerfile()
+
+      SlackSendMessage.send(
+        message: SlackMessage(
+          channel: nil,
+          text: "",
+          as_user: true,
+          parse: "full",
+          username: "Tower",
+          attachments: [
+            .init(
+              color: "",
+              pretext: "",
+              authorName: "Tower Status",
+              authorIcon: "",
+              title: "",
+              titleLink: "",
+              text: "Task Ended",
+              imageURL: "",
+              thumbURL: "",
+              footer: "",
+              footerIcon: "",
+              fields: [
+                .init(
+                  title: "Branch",
+                  value: branchName,
+                  short: false
+                ),
+                .init(
+                  title: "Commit",
+                  value: log,
+                  short: false
+                )
+              ]
+            )
+          ]
+        )
+      )
+
     } catch {
       Log.error(error)
+
+      SlackSendMessage.send(
+        message: SlackMessage(
+          channel: nil,
+          text: "",
+          as_user: true,
+          parse: "full",
+          username: "Tower",
+          attachments: [
+            .init(
+              color: "",
+              pretext: "",
+              authorName: "Tower Status",
+              authorIcon: "",
+              title: "",
+              titleLink: "",
+              text: "Task Failed",
+              imageURL: "",
+              thumbURL: "",
+              footer: "",
+              footerIcon: "",
+              fields: [
+                .init(
+                  title: "Branch",
+                  value: branchName,
+                  short: false
+                ),
+                .init(
+                  title: "Error",
+                  value: error.localizedDescription,
+                  short: false
+                )
+              ]
+            )
+          ]
+        )
+      )
     }
   }
 
@@ -370,11 +499,15 @@ final class BranchContext {
     }
   }
 
+  private func lastCommit() throws -> String {
+    return try shellOut(to: "git log -n 1", at: path)
+  }
+
   private func runTowerfile() throws {
 
     do {
       Log.info("[Branch : \(branchName)]", "Run towerfile")
-      let log = try shellOut(to: "git log -n 1", at: path)
+      let log = try lastCommit()
       Log.info("[Branch : \(branchName)]\n\(log)", "\n")
 
       do {
@@ -405,11 +538,15 @@ final class BranchContext {
   }
 }
 
-func printError(e: Error) {
-  if e is ShellOutError {
-    Log.error((e as! ShellOutError).message)
-  } else {
-    Log.error(e)
+extension ShellOutError : CustomDebugStringConvertible {
+  public var debugDescription: String {
+    return
+      [
+        "ShellOutError",
+        "status  : \(terminationStatus)",
+        "message : \(message)",
+        ]
+        .joined(separator: "\n")
   }
 }
 
