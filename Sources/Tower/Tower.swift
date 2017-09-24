@@ -128,6 +128,16 @@ public final class Session {
       """
     )
 
+    SlackSendMessage.send(
+      message: SlackMessage(
+      channel: nil,
+      text: "Launch Tower",
+      as_user: true,
+      parse: "full",
+      username: "Tower",
+      attachments: nil)
+    )
+
     createTowerWorkingDirectory()
 
     Observable<Int>

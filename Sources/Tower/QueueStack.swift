@@ -21,20 +21,49 @@ final class QueueStack {
     if let _q = queues[key] {
       q = _q
     } else {
-      q = createQueue()
+      q = createQueue(key: key)
       queues[key] = q
     }
 
     q.onNext(o)
   }
 
-  func createQueue() -> PublishSubject<Single<Void>> {
+  func createQueue(key: String) -> PublishSubject<Single<Void>> {
     let q = PublishSubject<Single<Void>>()
     q
       .do(onNext: { _ in
-        Log.info("Add Task")
+        Log.info("Add Task on \(key)")
+
+        SlackSendMessage.send(
+          message: SlackMessage(
+            channel: nil,
+            text: "Add Task on \(key)",
+            as_user: true,
+            parse: "full",
+            username: "Tower",
+            attachments: nil)
+        )
+
       })
-      .observeOn(ConcurrentDispatchQueueScheduler(qos: .default))      
+      .observeOn(ConcurrentDispatchQueueScheduler(qos: .default))
+      .mapWithIndex { task, i in
+        task.do(
+          onSubscribed: {
+            SlackSendMessage.send(
+              message: SlackMessage(
+                channel: nil,
+                text: "Start Task \(i) on \(key)",
+                as_user: true,
+                parse: "full",
+                username: "Tower",
+                attachments: nil)
+            )
+        },
+          onDispose: {
+
+        }
+        )
+      }
       .concat()
       .subscribe()
       .disposed(by: disposeBag)
