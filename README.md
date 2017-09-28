@@ -1,6 +1,6 @@
 # Tower
 
-# Usage
+## Usage
 
 Create `.towerfile` on root directory.
 
@@ -12,6 +12,18 @@ Example `.towerfile`
 echo 'Hello Tower'
 ```
 
-# Author
+## Development
+
+### Requirements
+
+Swift 4
+
+### Build
+
+```
+$ swift build
+```
+
+## Author
 
 muukii
