@@ -21,6 +21,7 @@ let package = Package(
     .package(url: "https://github.com/ReactiveX/RxSwift", .exact("4.0.0-beta.0")),
     .package(url: "https://github.com/muukii/Require.git", from: "1.1.0"),
     .package(url: "https://github.com/muukii/Bulk.git", from: "0.3.0"),
+    .package(url: "https://github.com/kylef/PathKit.git", from: "0.8.0"),
   ],
   targets: [
     .target(
@@ -35,6 +36,7 @@ let package = Package(
         "Bulk",
         "ShellOut",
         "RxSwift",
+        "PathKit",
       ]),
     .testTarget(
       name: "TowerTests",

@@ -4,50 +4,6 @@ import RxSwift
 import Bulk
 import ShellOut
 
-struct TowerFormatter: Bulk.Formatter {
-
-  public typealias FormatType = String
-
-  public struct LevelString {
-    public var verbose = "📜"
-    public var debug = "📃"
-    public var info = "💡"
-    public var warn = "⚠️"
-    public var error = "❌"
-  }
-
-  public let dateFormatter: DateFormatter
-
-  public var levelString = LevelString()
-
-  public init() {
-
-    let formatter = DateFormatter()
-    formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
-    self.dateFormatter = formatter
-
-  }
-
-  public func format(log: Log) -> FormatType {
-
-    let level: String = {
-      switch log.level {
-      case .verbose: return levelString.verbose
-      case .debug: return levelString.debug
-      case .info: return levelString.info
-      case .warn: return levelString.warn
-      case .error: return levelString.error
-      }
-    }()
-
-    let timestamp = dateFormatter.string(from: log.date)
-
-    let string = "[\(timestamp)] \(level) \(log.body)"
-
-    return string
-  }
-}
-
 let Log: Logger = {
 
   let l = Logger()
@@ -104,8 +60,8 @@ public final class Session {
   public let remote: String = "origin"
   private let workingDirName = ".tower_work"
   private let disposeBag = DisposeBag()
-  private let pollingInterval: RxTimeInterval = 20
-  private let queueStack = QueueStack()
+  private let pollingInterval: RxTimeInterval = 10
+  private var contexts: [String : BranchContext] = [:]
 
   public init(watchPath: String?) {
     self.watchPath = watchPath ?? FileManager.default.currentDirectoryPath
@@ -168,46 +124,10 @@ public final class Session {
           return Disposables.create()
         }
       }
-      .flatMap { () -> Single<[(String, Single<Void>)]> in
-
-        let tasks = self.createBranchContexts()
-          .map { c -> Maybe<(String, Single<Void>)> in
-          Single<Bool>.create { o in
-            let r = c.hasNewCommits()
-            o(.success(r))
-            return Disposables.create()
-            }
-            .filter {
-              $0 == true
-            }
-            .map { _ in c }
-            .map { c -> (String, Single<Void>) in
-              (
-                c.branchName,
-                Single.create { o in
-                  c.run()
-                  o(.success(()))
-                  return Disposables.create()
-                }
-              )
-            }
-            .subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
-        }
-
-        let _tasks = Observable.from(tasks)
-          .merge(maxConcurrent: 10)
-          .toArray()
-          .asSingle()
-
-        return _tasks
-      }
-      .subscribe(onNext: { [weak self] tasks in
-        tasks.forEach {
-          self?.queueStack.add($0.1, forKey: $0.0)
-        }
+      .subscribe(onNext: { [unowned self] tasks in
+        self.createBranchContexts().forEach { $0.runIfNeeded() }
       })
       .disposed(by: disposeBag)
-
   }
 
   private func fetch() {
@@ -219,10 +139,22 @@ public final class Session {
   }
 
   private func createBranchContexts() -> [BranchContext] {
+
     let branchNames = checkoutedBranchDirectoryNames()
-    return branchNames.map { branchName in
-      BranchContext(path: "\(watchPath)/\(workingDirName)/branch/\(branchName)", branchName: branchName)
+
+    var contexts: [BranchContext] = []
+
+    for branchName in branchNames {
+      if let c = self.contexts[branchName] {
+        contexts.append(c)
+      } else {
+        let c = BranchContext(path: "\(watchPath)/\(workingDirName)/branch/\(branchName)", branchName: branchName)
+        self.contexts[branchName] = c
+        contexts.append(c)
+      }
     }
+
+    return contexts
   }
 
   private func checkoutTargetBranches() {
@@ -257,19 +189,6 @@ public final class Session {
     }
   }
 
-  private func isBehind(from: String, to: String) -> Bool {
-    do {
-      let r = try shellOut(to: "git rev-list --count \(from)...\(to)", at: watchPath)
-      return (Int(r) ?? 0) > 0
-    } catch {
-      return false
-    }
-  }
-
-  private func remotePath() -> String {
-    return try! shellOut(to: "git remote -v | grep fetch | awk '{print $2}'", at: watchPath)
-  }
-
   private func deleteBranchDirectory(branchName: String) {
 
     Log.info("Delete branch", branchName)
@@ -282,6 +201,10 @@ public final class Session {
     } catch {
       Log.error(error)
     }
+  }
+
+  private func remotePath() -> String {
+    return try! shellOut(to: "git remote -v | grep fetch | awk '{print $2}'", at: watchPath)
   }
 
   private func shallowCloneToWorkingDirectory(branch: RemoteBranch) -> String {
@@ -325,290 +248,3 @@ public final class Session {
   }
 }
 
-final class BranchContext {
-
-  let path: String
-  let branchName: String
-
-  init(path: String, branchName: String) {
-    self.path = path
-    self.branchName = branchName
-  }
-
-  func run() {
-
-    do {
-      try pull()
-
-      let log = try lastCommit()
-
-      SlackSendMessage.send(
-        message: SlackMessage(
-          channel: nil,
-          text: "",
-          as_user: true,
-          parse: "full",
-          username: "Tower",
-          attachments: [
-            .init(
-              color: "",
-              pretext: "",
-              authorName: "Tower Status",
-              authorIcon: "",
-              title: "",
-              titleLink: "",
-              text: "Task Started",
-              imageURL: "",
-              thumbURL: "",
-              footer: "",
-              footerIcon: "",
-              fields: [
-                .init(
-                  title: "Branch",
-                  value: branchName,
-                  short: false
-                ),
-                .init(
-                  title: "Commit",
-                  value: log,
-                  short: false
-                )
-              ]
-            )
-          ]
-        )
-      )
-
-      try runTowerfile()
-
-      SlackSendMessage.send(
-        message: SlackMessage(
-          channel: nil,
-          text: "",
-          as_user: true,
-          parse: "full",
-          username: "Tower",
-          attachments: [
-            .init(
-              color: "",
-              pretext: "",
-              authorName: "Tower Status",
-              authorIcon: "",
-              title: "",
-              titleLink: "",
-              text: "Task Ended",
-              imageURL: "",
-              thumbURL: "",
-              footer: "",
-              footerIcon: "",
-              fields: [
-                .init(
-                  title: "Branch",
-                  value: branchName,
-                  short: false
-                ),
-                .init(
-                  title: "Commit",
-                  value: log,
-                  short: false
-                )
-              ]
-            )
-          ]
-        )
-      )
-
-    } catch {
-      Log.error(error)
-
-      SlackSendMessage.send(
-        message: SlackMessage(
-          channel: nil,
-          text: "",
-          as_user: true,
-          parse: "full",
-          username: "Tower",
-          attachments: [
-            .init(
-              color: "",
-              pretext: "",
-              authorName: "Tower Status",
-              authorIcon: "",
-              title: "",
-              titleLink: "",
-              text: "Task Failed",
-              imageURL: "",
-              thumbURL: "",
-              footer: "",
-              footerIcon: "",
-              fields: [
-                .init(
-                  title: "Branch",
-                  value: branchName,
-                  short: false
-                ),
-                .init(
-                  title: "Error",
-                  value: error.localizedDescription,
-                  short: false
-                )
-              ]
-            )
-          ]
-        )
-      )
-    }
-  }
-
-  func hasNewCommits() -> Bool {
-
-    do {
-      let branch = try shellOut(to: "git symbolic-ref --short HEAD", at: path)
-
-      if branchName != branch {
-        Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
-      }
-
-      Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
-      let result = try shellOut(to: "git fetch", at: path)
-
-      if result.contains("(forced update)") {
-        try shellOut(to: "git reset --hard origin/\(branchName)", at: path)
-        return true
-      }
-      
-      let r = try! shellOut(to: "git rev-list --count \(branchName)...origin/\(branchName)", at: path)
-      let behinded = (Int(r) ?? 0) > 0
-      return behinded
-    } catch {
-      Log.error(error)
-      return false
-    }
-  }
-
-  private func pull() throws {
-    do {
-      Log.verbose("[Branch : \(branchName)", "pulling")
-      try shellOut(to: "git reset --hard origin/\(branchName)", at: path)
-
-      precondition(hasNewCommits() == false, "Pull has failed")
-
-    } catch {
-      Log.error("[Branch : \(branchName)] Pull failed", (error as! ShellOutError).message)
-      throw error
-    }
-  }
-
-  private func lastCommit() throws -> String {
-    return try shellOut(to: "git log -n 1", at: path)
-  }
-
-  private func runTowerfile() throws {
-
-    do {
-      Log.info("[Branch : \(branchName)]", "Run towerfile")
-      let log = try lastCommit()
-      Log.info("[Branch : \(branchName)]\n\(log)", "\n")
-
-      do {
-      let p = Process()
-      p.launchBash(
-        with: "echo $PATH",
-        output: { (s) in
-          print(s, separator: "", terminator: "")
-      },
-        error: { (s) in
-          print(s, separator: "", terminator: "")
-      })
-      }
-
-      let p = Process()
-      p.launchBash(
-        with: "cd \"\(path)\" && sh .towerfile",
-        output: { (s) in
-          print(s, separator: "", terminator: "")
-      },
-        error: { (s) in
-          print(s, separator: "", terminator: "")
-      })
-
-    } catch {
-      Log.error(error)
-    }
-  }
-}
-
-extension ShellOutError : CustomDebugStringConvertible {
-  public var debugDescription: String {
-    return
-      [
-        "ShellOutError",
-        "status  : \(terminationStatus)",
-        "message : \(message)",
-        ]
-        .joined(separator: "\n")
-  }
-}
-
-extension Process {
-
-  @discardableResult func launchBash(with command: String, output: @escaping (String) -> Void, error: @escaping (String) -> Void) -> Int32 {
-
-    launchPath = "/bin/bash"
-    arguments = ["-l", "-c", "export LANG=en_US.UTF-8 && " + command]
-
-    let outputPipe = Pipe()
-    standardOutput = outputPipe
-
-    let errorPipe = Pipe()
-    standardError = errorPipe
-
-    do {
-      outputPipe.fileHandleForReading.readabilityHandler = { f in
-
-        let d = f.availableData
-
-        guard d.count > 0 else { return }
-
-        output(d.shellOutput())
-      }
-    }
-
-    do {
-      errorPipe.fileHandleForReading.readabilityHandler = { f in
-        let d = f.availableData
-
-        guard d.count > 0 else { return }
-
-        error(d.shellOutput())
-      }
-    }
-
-    launch()
-
-    waitUntilExit()
-
-    #if !os(Linux)
-      outputPipe.fileHandleForReading.readabilityHandler = nil
-      errorPipe.fileHandleForReading.readabilityHandler = nil
-    #endif
-
-    return terminationStatus
-  }
-}
-
-private extension Data {
-  func shellOutput() -> String {
-    guard let output = String(data: self, encoding: .utf8) else {
-      return ""
-    }
-
-//    guard !output.hasSuffix("\n") else {
-//      let outputLength = output.distance(from: output.startIndex, to: output.endIndex)
-//      return output.substring(to: output.index(output.startIndex, offsetBy: outputLength - 1))
-//    }
-
-    return output
-
-  }
-}
