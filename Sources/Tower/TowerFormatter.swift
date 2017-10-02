@@ -46,8 +46,15 @@ struct TowerFormatter: Bulk.Formatter {
     }()
 
     let timestamp = dateFormatter.string(from: log.date)
-
-    let string = "[\(timestamp)] \(level) \(log.body)"
+    let string: String
+    
+    switch log.level {
+    case .warn, .error:
+      let file = URL(string: log.file.description)?.deletingPathExtension()
+      string = "[\(timestamp)] \(level) \(file?.lastPathComponent ?? "???").\(log.function):\(log.line) \(log.body)"
+    default:
+      string = "[\(timestamp)] \(level) \(log.body)"
+    }
 
     return string
   }

@@ -72,14 +72,19 @@ public final class Session {
     Log.info("Process Path:", CommandLine.arguments.first ?? "")
     Log.info("WatchingPath:", watchPath)
     Log.info("Session Start")
+    
+    do {
 
-    Log.info("""
-
-      PATH : \(try! shellOut(to: "echo $PATH"))
+      Log.info("""
+        
+        PATH : \(try shellOut(to: "echo $PATH"))
+        ENV  : \(try shellOut(to: "env"))
+        """
+      )
       
-      ENV  : \(try! shellOut(to: "env"))
-      """
-    )
+    } catch {
+      Log.error(error)
+    }
 
     SlackSendMessage.send(
       message: SlackMessage(
@@ -118,29 +123,35 @@ public final class Session {
       })
       .flatMapFirst {
         Single<Void>.create { o in
-          self.fetch()
-          self.checkoutTargetBranches()
-          o(.success(()))
+          do {
+            try self.fetch()
+            try self.checkoutTargetBranches()
+            o(.success(()))
+          } catch {
+            o(.error(error))
+          }
           return Disposables.create()
-        }
+          }
+          .asObservable()
+          .catchError { _ in .empty() }
       }
       .subscribe(onNext: { [unowned self] tasks in
-        self.createBranchContexts().forEach { $0.runIfNeeded() }
+        do {
+          try self.createBranchContexts().forEach { $0.runIfNeeded() }
+        } catch {
+          Log.error(error)
+        }
       })
       .disposed(by: disposeBag)
   }
 
-  private func fetch() {
-    do {
-      try shellOut(to: "git fetch \(remote) --prune", at: watchPath)
-    } catch {
-
-    }
+  private func fetch() throws {
+    try shellOut(to: "git fetch \(remote) --prune", at: watchPath)
   }
 
-  private func createBranchContexts() -> [BranchContext] {
+  private func createBranchContexts() throws -> [BranchContext] {
 
-    let branchNames = checkoutedBranchDirectoryNames()
+    let branchNames = try checkoutedBranchDirectoryNames()
 
     var contexts: [BranchContext] = []
 
@@ -157,32 +168,32 @@ public final class Session {
     return contexts
   }
 
-  private func checkoutTargetBranches() {
+  private func checkoutTargetBranches() throws {
 
-    let _local = checkoutedBranchDirectoryNames()
-    let _remote = filterTargetBranch(branches: remoteBranches())
+    let _local = try checkoutedBranchDirectoryNames()
+    let _remote = filterTargetBranch(branches: try remoteBranches())
 
     for deletedBranch in _local where _remote.contains(where: { $0.name == deletedBranch }) == false {
       deleteBranchDirectory(branchName: deletedBranch)
     }
 
     for branch in _remote where _local.contains(where: { $0 == branch.name }) == false {
-      _ = shallowCloneToWorkingDirectory(branch: branch)
+      _ = try shallowCloneToWorkingDirectory(branch: branch)
     }
   }
 
-  private func localBranches() -> [LocalBranch] {
+  private func localBranches() throws -> [LocalBranch] {
 
-    let remoteBranches = try! shellOut(to: "git branch --format '%(refname:short)'", at: watchPath)
+    let remoteBranches = try shellOut(to: "git branch --format '%(refname:short)'", at: watchPath)
     let names = remoteBranches.split(separator: "\n")
     return names.map {
       LocalBranch(name: String($0))
     }
   }
 
-  private func remoteBranches() -> [RemoteBranch] {
+  private func remoteBranches() throws -> [RemoteBranch] {
 
-    let remoteBranches = try! shellOut(to: "git branch --remote --format '%(refname:lstrip=3)'", at: watchPath)
+    let remoteBranches = try shellOut(to: "git branch --remote --format '%(refname:lstrip=3)'", at: watchPath)
     let names = remoteBranches.split(separator: "\n")
     return names.map {
       RemoteBranch(remote: remote, name: String($0))
@@ -203,14 +214,14 @@ public final class Session {
     }
   }
 
-  private func remotePath() -> String {
-    return try! shellOut(to: "git remote -v | grep fetch | awk '{print $2}'", at: watchPath)
+  private func remotePath() throws -> String {
+    return try shellOut(to: "git remote -v | grep fetch | awk '{print $2}'", at: watchPath)
   }
 
-  private func shallowCloneToWorkingDirectory(branch: RemoteBranch) -> String {
+  private func shallowCloneToWorkingDirectory(branch: RemoteBranch) throws -> String {
     let path = "\(workingDirName)/branch/\(branch.name)"
     Log.info("Clone", path)
-    try! shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path)", at: watchPath)
+    try shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path)", at: watchPath)
     return path
   }
 
@@ -242,9 +253,9 @@ public final class Session {
     }
   }
 
-  private func checkoutedBranchDirectoryNames() -> [String] {
+  private func checkoutedBranchDirectoryNames() throws -> [String] {
 
-    return try! shellOut(to: "ls -F | grep / | sed 's#/##'", at: "\(watchPath)/\(workingDirName)/branch").split(separator: "\n").map { String($0) }
+    return try shellOut(to: "ls -F | grep / | sed 's#/##'", at: "\(watchPath)/\(workingDirName)/branch").split(separator: "\n").map { String($0) }
   }
 }
 
