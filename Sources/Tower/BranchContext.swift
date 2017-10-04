@@ -8,6 +8,7 @@
 import Foundation
 import ShellOut
 import RxSwift
+import PathKit
 
 final class BranchContext : Equatable {
 
@@ -17,7 +18,7 @@ final class BranchContext : Equatable {
     return true
   }
 
-  let path: String
+  let path: Path
   let branchName: String
   var isRunning: Bool = false
 
@@ -25,7 +26,7 @@ final class BranchContext : Equatable {
   private let queue = PublishSubject<Single<Void>>()
   private let disposeBag = DisposeBag()
 
-  init(path: String, branchName: String) {
+  init(path: Path, branchName: String) {
     self.path = path
     self.branchName = branchName
 
@@ -205,35 +206,35 @@ final class BranchContext : Equatable {
 
   private func hasNewCommits() throws -> Bool {
 
-    let branch = try shellOut(to: "git symbolic-ref --short HEAD", at: path)
+    let branch = try runShellInDirectory("git symbolic-ref --short HEAD")
 
     if branchName != branch {
       Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
     }
 
     Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
-    let result = try shellOut(to: "git fetch", at: path)
+    let result = try runShellInDirectory("git fetch")
 
     if result.contains("(forced update)") {
-      try shellOut(to: "git reset --hard origin/\(branchName)", at: path)
+      try runShellInDirectory("git reset --hard origin/\(branchName)")
       return true
     }
 
-    let r = try! shellOut(to: "git rev-list --count \(branchName)...origin/\(branchName)", at: path)
+    let r = try runShellInDirectory("git rev-list --count \(branchName)...origin/\(branchName)")
     let behinded = (Int(r) ?? 0) > 0
     return behinded
   }
 
   private func pull() throws {
     Log.verbose("[Branch : \(branchName)", "pulling")
-    try shellOut(to: "git reset --hard origin/\(branchName)", at: path)
+    try runShellInDirectory("git reset --hard origin/\(branchName)")
 
     let hasNewCommits = try self.hasNewCommits()
     precondition(hasNewCommits == false, "Pull has failed")
   }
 
   private func lastCommit() throws -> String {
-    return try shellOut(to: "git log -n 1", at: path)
+    return try runShellInDirectory("git log -n 1")
   }
 
   private func runTowerfile() throws {
@@ -259,10 +260,10 @@ final class BranchContext : Equatable {
       p.launchBash(
         with: "cd \"\(path)\" && sh .towerfile",
         output: { (s) in
-          print(s, separator: "", terminator: "")
+          print("[\(self.branchName)]", s, separator: "", terminator: "")
       },
         error: { (s) in
-          print(s, separator: "", terminator: "")
+          print("[\(self.branchName)]", s, separator: "", terminator: "")
       })
 
     } catch {
@@ -270,8 +271,9 @@ final class BranchContext : Equatable {
     }
   }
 
+  @discardableResult
   private func runShellInDirectory(_ c: String) throws -> String {
-    return try shellOut(to: c, at: path)
+    return try shellOut(to: c, at: path.string)
   }
 
   private func sendStarted() {

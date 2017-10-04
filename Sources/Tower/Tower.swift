@@ -3,6 +3,7 @@ import Foundation
 import RxSwift
 import Bulk
 import ShellOut
+import PathKit
 
 let Log: Logger = {
 
@@ -55,35 +56,53 @@ public final class Session {
     }
   }
 
-  public let watchPath: String
+  public let workingDirectoryPath: Path
+  public let gitURLString: String
   public let branchPattern: String = "v[0-9]+.*branch"
   public let remote: String = "origin"
-  private let workingDirName = ".tower_work"
   private let disposeBag = DisposeBag()
   private let pollingInterval: RxTimeInterval = 10
   private var contexts: [String : BranchContext] = [:]
 
-  public init(watchPath: String?) {
-    self.watchPath = watchPath ?? FileManager.default.currentDirectoryPath
+  public var basePath: Path {
+    return workingDirectoryPath + "base"
+  }
+
+  public var branchesPath: Path {
+    return workingDirectoryPath + "branches"
+  }
+
+  public init(workingDirectoryPath: String, gitURLString: String) {
+    self.workingDirectoryPath = Path(workingDirectoryPath).absolute()
+    self.gitURLString = gitURLString
   }
 
   public func start() {
 
-    Log.info("Process Path:", CommandLine.arguments.first ?? "")
-    Log.info("WatchingPath:", watchPath)
-    Log.info("Session Start")
-    
     do {
 
-      Log.info("""
-        
-        PATH : \(try shellOut(to: "echo $PATH"))
-        ENV  : \(try shellOut(to: "env"))
-        """
-      )
-      
-    } catch {
-      Log.error(error)
+    Log.info("Process Path:", CommandLine.arguments.first ?? "")
+    Log.info("WorkingDirectory:", workingDirectoryPath)
+    Log.info("Git-URL:", gitURLString)
+    Log.info("Session Start")
+
+    Log.info("""
+
+      PATH : \(try shellOut(to: "echo $PATH"))
+      ENV  : \(try shellOut(to: "env"))
+      """
+    )
+
+    if self.workingDirectoryPath.exists == false {
+      try shellOut(to: .createFolder(named: self.workingDirectoryPath.string))
+    }
+
+    if branchesPath.exists == false {
+      try shellOut(to: .createFolder(named: branchesPath.string))
+    }
+
+    if basePath.exists == false {
+      try clone()
     }
 
     SlackSendMessage.send(
@@ -111,8 +130,6 @@ public final class Session {
         ]
       )
     )
-
-    createTowerWorkingDirectory()
 
     Observable<Int>
       .interval(pollingInterval, scheduler: MainScheduler.instance)
@@ -143,10 +160,20 @@ public final class Session {
         }
       })
       .disposed(by: disposeBag)
+
+    } catch {
+      fatalError("\(error)")
+    }
+  }
+
+  private func clone() throws {
+    try shellOut(to: "git clone --depth 1 \(gitURLString) \(basePath.string)", at: workingDirectoryPath.string)
+    try shellOut(to: "git remote set-branches origin '*'", at: basePath.string)
+    try shellOut(to: "git fetch", at: basePath.string)
   }
 
   private func fetch() throws {
-    try shellOut(to: "git fetch \(remote) --prune", at: watchPath)
+    try shellOut(to: "git fetch \(remote) --prune", at: basePath.string)
   }
 
   private func createBranchContexts() throws -> [BranchContext] {
@@ -159,7 +186,7 @@ public final class Session {
       if let c = self.contexts[branchName] {
         contexts.append(c)
       } else {
-        let c = BranchContext(path: "\(watchPath)/\(workingDirName)/branch/\(branchName)", branchName: branchName)
+        let c = BranchContext(path: branchesPath + Path(branchName), branchName: branchName)
         self.contexts[branchName] = c
         contexts.append(c)
       }
@@ -184,7 +211,7 @@ public final class Session {
 
   private func localBranches() throws -> [LocalBranch] {
 
-    let remoteBranches = try shellOut(to: "git branch --format '%(refname:short)'", at: watchPath)
+    let remoteBranches = try shellOut(to: "git branch --format '%(refname:short)'", at: basePath.string)
     let names = remoteBranches.split(separator: "\n")
     return names.map {
       LocalBranch(name: String($0))
@@ -193,7 +220,7 @@ public final class Session {
 
   private func remoteBranches() throws -> [RemoteBranch] {
 
-    let remoteBranches = try shellOut(to: "git branch --remote --format '%(refname:lstrip=3)'", at: watchPath)
+    let remoteBranches = try shellOut(to: "git branch --remote --format '%(refname:lstrip=3)'", at: basePath.string)
     let names = remoteBranches.split(separator: "\n")
     return names.map {
       RemoteBranch(remote: remote, name: String($0))
@@ -204,40 +231,24 @@ public final class Session {
 
     Log.info("Delete branch", branchName)
 
-    guard workingDirName.isEmpty == false else { return }
     guard branchName.isEmpty == false else { return }
-    let command = "rm -rf \(workingDirName)/branch/\(branchName)"
+    let command = "rm -rf \((branchesPath + branchName).string)"
     do {
-      try shellOut(to: command, at: watchPath)
+      try shellOut(to: command, at: basePath.string)
     } catch {
       Log.error(error)
     }
   }
 
   private func remotePath() throws -> String {
-    return try shellOut(to: "git remote -v | grep fetch | awk '{print $2}'", at: watchPath)
+    return try shellOut(to: "git remote -v | grep fetch | awk '{print $2}'", at: basePath.string)
   }
 
-  private func shallowCloneToWorkingDirectory(branch: RemoteBranch) throws -> String {
-    let path = "\(workingDirName)/branch/\(branch.name)"
+  private func shallowCloneToWorkingDirectory(branch: RemoteBranch) throws -> Path {
+    let path = branchesPath + branch.name
     Log.info("Clone", path)
-    try shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path)", at: watchPath)
+    try shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path.absolute().string)", at: basePath.string)
     return path
-  }
-
-  private func createTowerWorkingDirectory() {
-    do {
-      Log.info("Create .tower_work")
-      try shellOut(to: .createFolder(named: ".tower_work"), at: watchPath)
-    } catch {
-      Log.warn(error)
-    }
-    do {
-      Log.info("Create .tower_work/branch")
-      try shellOut(to: .createFolder(named: "branch"), at: "\(watchPath)/\(workingDirName)")
-    } catch {
-      Log.warn(error)
-    }
   }
 
   private func filterTargetBranch<T: BranchType>(branches: [T]) -> [T] {
@@ -253,9 +264,12 @@ public final class Session {
     }
   }
 
+  ///
+  ///
+  /// - Returns: 
   private func checkoutedBranchDirectoryNames() throws -> [String] {
 
-    return try shellOut(to: "ls -F | grep / | sed 's#/##'", at: "\(watchPath)/\(workingDirName)/branch").split(separator: "\n").map { String($0) }
+    return try shellOut(to: "ls -F | grep / | sed 's#/##'", at: branchesPath.absolute().string).split(separator: "\n").map { String($0) }
   }
 }
 

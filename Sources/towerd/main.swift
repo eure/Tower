@@ -2,8 +2,10 @@
 import Tower
 import Foundation
 
-let path: String? = CommandLine.arguments.indices.contains(1) ? CommandLine.arguments[1] : nil
+let path: String = CommandLine.arguments[1]
+let url: String = CommandLine.arguments[2]
 
-Session(watchPath: path).start()
+Session(workingDirectoryPath: path, gitURLString: url).start()
+
 
 RunLoop.main.run()
