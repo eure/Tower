@@ -31,7 +31,6 @@ final class BranchContext : Equatable {
     self.branchName = branchName
 
     queue
-      .observeOn(ConcurrentDispatchQueueScheduler(qos: .default))
       .mapWithIndex { task, i in
         task.do(
           onSubscribed: {
@@ -54,7 +53,7 @@ final class BranchContext : Equatable {
     lock.lock(); defer { lock.unlock() }
 
     guard isRunning == false else {
-      Log.verbose("[\(branchName)] is running, skip polling")
+//      Log.verbose("[\(branchName)] is running, skip polling")
       return
     }
 
@@ -78,6 +77,7 @@ final class BranchContext : Equatable {
         self.isRunning = true
       })
       .timeout((60 * 60), scheduler: SerialDispatchQueueScheduler(qos: .default))
+      .subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
 
     queue.onNext(task)
   }
@@ -213,7 +213,7 @@ final class BranchContext : Equatable {
       Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
     }
 
-    Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
+//    Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
     let result = try runShellInDirectory("git fetch")
 
     if result.contains("(forced update)") {
