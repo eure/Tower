@@ -77,6 +77,7 @@ final class BranchContext : Equatable {
       .do(onSubscribe: {
         self.isRunning = true
       })
+      .timeout((60 * 60), scheduler: SerialDispatchQueueScheduler(qos: .default))
 
     queue.onNext(task)
   }
