@@ -1,11 +1,17 @@
 
 import Tower
 import Foundation
+import Commander
 
-let path: String = CommandLine.arguments[1]
-let url: String = CommandLine.arguments[2]
+command(
+  Argument<String>("Work Dir"),
+  Argument<String>("Git URL")
+) { path, url in
 
-Session(workingDirectoryPath: path, gitURLString: url).start()
+  Session(workingDirectoryPath: path, gitURLString: url).start()
+
+  RunLoop.main.run()
+  }
+  .run()
 
 
-RunLoop.main.run()
