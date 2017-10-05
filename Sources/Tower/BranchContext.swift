@@ -69,12 +69,20 @@ final class BranchContext : Equatable {
         o(.error(error))
       }
 
-      return Disposables.create {
-        self.isRunning = false
+      return Disposables.create()
       }
-      }
-      .do(onSubscribe: {
-        self.isRunning = true
+      .do(
+        onError: { _ in
+          
+      },
+        onSubscribe: {
+          self.isRunning = true
+      },
+        onSubscribed: {
+          self.isRunning = false
+      },
+        onDispose: {
+          self.isRunning = false
       })
       .timeout((60 * 60), scheduler: SerialDispatchQueueScheduler(qos: .default))
       .subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
