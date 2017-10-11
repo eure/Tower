@@ -199,6 +199,8 @@ public final class Session {
 
     let _local = try checkoutedBranchDirectoryNames()
     let _remote = filterTargetBranch(branches: try remoteBranches())
+    
+    guard _remote.isEmpty == false else { return }
 
     for deletedBranch in _local where _remote.contains(where: { $0.name == deletedBranch }) == false {
       deleteBranchDirectory(branchName: deletedBranch)
