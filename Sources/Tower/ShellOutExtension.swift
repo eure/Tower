@@ -9,10 +9,19 @@ import Foundation
 
 extension Process {
 
-  @discardableResult func launchBash(with command: String, output: @escaping (String) -> Void, error: @escaping (String) -> Void) -> Int32 {
+  @discardableResult func launchBash(
+    with command: String,
+    loadPATH: String? = nil,
+    output: @escaping (String) -> Void,
+    error: @escaping (String) -> Void
+    ) -> Int32 {
 
     launchPath = "/bin/bash"
-    arguments = ["-l", "-c", "export LANG=en_US.UTF-8 && " + command]
+    if let loadPATH = loadPATH {
+      arguments = ["-l", "-c", "export", "LANG=en_US.UTF-8", "&&", "export", "PATH='\(loadPATH)'", "&&" ,command]
+    } else {
+      arguments = ["-l", "-c", "export", "LANG=en_US.UTF-8", "&&" ,command]
+    }
 
     let outputPipe = Pipe()
     standardOutput = outputPipe

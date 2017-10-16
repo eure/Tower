@@ -20,15 +20,22 @@ final class BranchContext : Equatable {
 
   let path: Path
   let branchName: String
+  let loadPathForTowerfile: String?
   var isRunning: Bool = false
 
   private let lock = NSRecursiveLock()
   private let queue = PublishSubject<Single<Void>>()
   private let disposeBag = DisposeBag()
 
-  init(path: Path, branchName: String) {
+  init(
+    path: Path,
+    branchName: String,
+    loadPathForTowerfile: String?
+    ) {
+    
     self.path = path
     self.branchName = branchName
+    self.loadPathForTowerfile = loadPathForTowerfile
 
     queue
       .mapWithIndex { task, i in
@@ -53,7 +60,7 @@ final class BranchContext : Equatable {
     lock.lock(); defer { lock.unlock() }
 
     guard isRunning == false else {
-//      Log.verbose("[\(branchName)] is running, skip polling")
+      Log.verbose("[\(branchName)] is running, skip polling")
       return
     }
 
@@ -221,7 +228,7 @@ final class BranchContext : Equatable {
       Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
     }
 
-//    Log.info("[Branch : \(branchName)]", "fetch on \(Thread.current)")
+    Log.info("[Branch : \(branchName)]")
     let result = try runShellInDirectory("git fetch")
 
     if result.contains("(forced update)") {
