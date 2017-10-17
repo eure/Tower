@@ -264,6 +264,7 @@ final class BranchContext : Equatable {
         let p = Process()
         p.launchBash(
           with: "echo $PATH",
+          loadPATH: loadPathForTowerfile,
           output: { (s) in
             print(s, separator: "", terminator: "")
         },
@@ -275,6 +276,7 @@ final class BranchContext : Equatable {
       let p = Process()
       p.launchBash(
         with: "cd \"\(path)\" && sh .towerfile",
+        loadPATH: loadPathForTowerfile,
         output: { (s) in
           print("[\(self.branchName)]", s, separator: "", terminator: "")
       },
