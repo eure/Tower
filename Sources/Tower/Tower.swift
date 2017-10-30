@@ -58,7 +58,7 @@ public final class Session {
   
   public let workingDirectoryPath: Path
   public let gitURLString: String
-  public let branchPattern: String = "v[0-9]+.*branch"
+  public let branchPattern: String = ""
 //  public let branchPattern: String = "v100.0branch"
   public let remote: String = "origin"
   public let loadPathForTowerfile: String?
