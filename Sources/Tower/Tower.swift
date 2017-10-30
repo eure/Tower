@@ -274,7 +274,9 @@ public final class Session {
     
     let exp = try! NSRegularExpression(pattern: branchPattern, options: [])
     
-    return branches.filter { branch in
+    return branches
+      .filter { $0.name != "HEAD" }
+      .filter { branch in
       exp.matches(in: branch.name, options: [], range: NSRange.init(0..<branch.name.count)).count == 1
     }
   }
