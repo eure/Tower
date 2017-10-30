@@ -222,7 +222,7 @@ final class BranchContext : Equatable {
 
   private func hasNewCommits() throws -> Bool {
 
-    let branch = try runShellInDirectory("git symbolic-ref --short HEAD")
+    let branch = try runShellInDirectory("git rev-parse --abbrev-ref HEAD")
 
     if branchName != branch {
       Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")

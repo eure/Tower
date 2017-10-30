@@ -10,13 +10,16 @@ let Log: Logger = {
   let l = Logger()
   
   l.add(pipeline: Pipeline(
-    plugins: [],
+    plugins: [
+      LevelFilterPlugin.init(ignoreLevels: [.verbose, .debug, .info])
+    ],
     targetConfiguration: Pipeline.TargetConfiguration(
       formatter: TowerFormatter(),
       target: ConsoleTarget()
     )
     )
   )
+
   return l
 }()
 
@@ -66,6 +69,7 @@ public final class Session {
   private let disposeBag = DisposeBag()
   private let pollingInterval: RxTimeInterval = 10
   private var contexts: [String : BranchContext] = [:]
+  private let branchDirectoryName = "me.muukii.tower.work"
   
   public var basePath: Path {
     return workingDirectoryPath + "base"
@@ -88,6 +92,22 @@ public final class Session {
   public func start() {
     
     do {
+
+      let logFilePath = (workingDirectoryPath + "log.txt").absolute().description
+
+      print("LogFilePath => \(logFilePath)")
+
+      Log.add(pipeline:
+        AsyncPipeline(
+          plugins: [],
+          bulkConfiguration: nil,
+          targetConfiguration: Pipeline.TargetConfiguration.init(
+            formatter: TowerFormatter(),
+            target: FileTarget(filePath: logFilePath)
+          ),
+          queue: DispatchQueue.global(qos: .background)
+        )
+      )
       
       Log.info("Process Path:", CommandLine.arguments.first ?? "")
       Log.info("WorkingDirectory:", workingDirectoryPath)
@@ -176,9 +196,11 @@ public final class Session {
   }
   
   private func clone() throws {
+    Log.info("Start Clone BaseRipogitory")
     try shellOut(to: "git clone --depth 1 \(gitURLString) \(basePath.string)", at: workingDirectoryPath.string)
     try shellOut(to: "git remote set-branches origin '*'", at: basePath.string)
     try shellOut(to: "git fetch", at: basePath.string)
+    Log.info("Complete Clone BaseRipogitory")
   }
   
   private func fetch() throws {
@@ -196,7 +218,7 @@ public final class Session {
         contexts.append(c)
       } else {
         let c = BranchContext(
-          path: branchesPath + Path(branchName),
+          path: branchesPath + Path(branchName) + branchDirectoryName,
           branchName: branchName,
           loadPathForTowerfile: loadPathForTowerfile
         )
@@ -208,7 +230,7 @@ public final class Session {
     return contexts
   }
   
-  private func checkoutTargetBranches() throws {
+  private func checkoutTargetBranches() throws  {
     
     let _local = try checkoutedBranchDirectoryNames()
     let _remote = filterTargetBranch(branches: try remoteBranches())
@@ -218,7 +240,7 @@ public final class Session {
     for deletedBranch in _local where _remote.contains(where: { $0.name == deletedBranch }) == false {
       deleteBranchDirectory(branchName: deletedBranch)
     }
-    
+
     for branch in _remote where _local.contains(where: { $0 == branch.name }) == false {
       _ = try shallowCloneToWorkingDirectory(branch: branch)
     }
@@ -237,9 +259,11 @@ public final class Session {
     
     let remoteBranches = try shellOut(to: "git branch --remote --format '%(refname:lstrip=3)'", at: basePath.string)
     let names = remoteBranches.split(separator: "\n")
-    return names.map {
-      RemoteBranch(remote: remote, name: String($0))
-    }
+    return names
+      .map {
+        RemoteBranch(remote: remote, name: String($0))
+      }
+      .filter { $0.name != "HEAD" }
   }
   
   private func deleteBranchDirectory(branchName: String) {
@@ -247,9 +271,10 @@ public final class Session {
     Log.info("Delete branch", branchName)
     
     guard branchName.isEmpty == false else { return }
-    let command = "rm -rf \((branchesPath + branchName).string)"
+
     do {
-      try shellOut(to: command, at: basePath.string)
+      let path = branchesPath + branchName + branchDirectoryName
+      try path.delete()
     } catch {
       Log.error(error)
     }
@@ -260,9 +285,19 @@ public final class Session {
   }
   
   private func shallowCloneToWorkingDirectory(branch: RemoteBranch) throws -> Path {
-    let path = branchesPath + branch.name
+    let path = branchesPath + branch.name + branchDirectoryName
     Log.info("Clone", path)
-    try shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path.absolute().string)", at: basePath.string)
+
+    do {
+      try shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path.absolute().string)", at: basePath.string)
+    } catch {
+      do {
+        try path.absolute().delete()
+      } catch {
+        throw error
+      }
+      throw error
+    }
     return path
   }
   
@@ -275,7 +310,6 @@ public final class Session {
     let exp = try! NSRegularExpression(pattern: branchPattern, options: [])
     
     return branches
-      .filter { $0.name != "HEAD" }
       .filter { branch in
       exp.matches(in: branch.name, options: [], range: NSRange.init(0..<branch.name.count)).count == 1
     }
@@ -286,7 +320,7 @@ public final class Session {
   /// - Returns: 
   private func checkoutedBranchDirectoryNames() throws -> [String] {
     
-    return try shellOut(to: "ls -F | grep / | sed 's#/##'", at: branchesPath.absolute().string).split(separator: "\n").map { String($0) }
+    return try shellOut(to: "find . -type d -name \(branchDirectoryName) | sed 's#\\./##' | xargs -n 1 dirname", at: branchesPath.absolute().string).split(separator: "\n").map { String($0) }
   }
 }
 
