@@ -106,7 +106,7 @@ final class BranchContext : Equatable {
 
       SlackSendMessage.send(
         message: SlackMessage(
-          channel: nil,
+          channel: "C2K76LQ8Z",
           text: "",
           as_user: true,
           parse: "full",
@@ -297,7 +297,7 @@ final class BranchContext : Equatable {
   private func sendStarted() {
     SlackSendMessage.send(
       message: SlackMessage(
-        channel: nil,
+        channel: "C2K76LQ8Z",
         text: "",
         as_user: true,
         parse: "full",
