@@ -20,6 +20,21 @@ let Log: Logger = {
     )
   )
 
+  l.add(pipeline:
+    AsyncPipeline(
+      plugins: [],
+      bulkConfiguration: Pipeline.BulkConfiguration.init(buffer: MemoryBuffer(size: 50), timeout: .seconds(20)),
+      targetConfiguration: Pipeline.TargetConfiguration.init(
+        formatter: RawFormatter(),
+        target: SlackTarget.init(
+          incomingWebhookURLString: "https://hooks.slack.com/services/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",
+          username: "Tower"
+        )
+      ),
+      queue: DispatchQueue.global(qos: .utility)
+    )
+  )
+
   return l
 }()
 
@@ -61,8 +76,7 @@ public final class Session {
   
   public let workingDirectoryPath: Path
   public let gitURLString: String
-  public let branchPattern: String = ""
-//  public let branchPattern: String = "v100.0branch"
+  public let branchPattern: String
   public let remote: String = "origin"
   public let loadPathForTowerfile: String?
   
@@ -82,11 +96,14 @@ public final class Session {
   public init(
     workingDirectoryPath: String,
     gitURLString: String,
-    loadPathForTowerfile: String?
+    loadPathForTowerfile: String?,
+    branchPattern: String = ""
     ) {
+    
     self.workingDirectoryPath = Path(workingDirectoryPath).absolute()
     self.gitURLString = gitURLString
     self.loadPathForTowerfile = loadPathForTowerfile
+    self.branchPattern = branchPattern
   }
   
   public func start() {
