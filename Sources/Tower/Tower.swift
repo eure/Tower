@@ -23,7 +23,7 @@ let Log: Logger = {
   l.add(pipeline:
     AsyncPipeline(
       plugins: [],
-      bulkConfiguration: Pipeline.BulkConfiguration.init(buffer: MemoryBuffer(size: 50), timeout: .seconds(20)),
+      bulkConfiguration: Pipeline.BulkConfiguration.init(buffer: MemoryBuffer(size: 10), timeout: .seconds(20)),
       targetConfiguration: Pipeline.TargetConfiguration.init(
         formatter: RawFormatter(),
         target: SlackTarget.init(

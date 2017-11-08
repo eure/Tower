@@ -73,12 +73,9 @@ public final class SlackTarget : Bulk.Target {
       return SlackMessage.Attachment(
         color: color,
         text: log.body,
-        footer: "Bulk",
+        footer: "Bulk \(log.file):\(log.line.description) \(log.function)",
         ts: log.date.timeIntervalSince1970,
         fields: [
-          .init(title: "Level", value: levelString, short: false),
-          .init(title: "File", value: "\(log.file):\(log.line.description)", short: false),
-          .init(title: "Function", value: log.function, short: false),
           ])
     }
 
