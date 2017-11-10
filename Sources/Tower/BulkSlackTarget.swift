@@ -76,7 +76,7 @@ public final class SlackTarget : Bulk.Target {
         footer: "Bulk \(log.file):\(log.line.description) \(log.function)",
         ts: log.date.timeIntervalSince1970,
         fields: [
-          ])
+        ])
     }
 
     let m = SlackMessage.init(
