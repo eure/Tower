@@ -200,7 +200,7 @@ public final class Session {
         }
         .subscribe(onNext: { [unowned self] tasks in
           do {
-            try self.createBranchContexts().forEach { $0.runIfNeeded() }
+            try self.createBranchContexts().forEach { $0.runIfHasNewCommit() }
           } catch {
             Log.error(error)
           }

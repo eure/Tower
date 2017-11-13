@@ -55,7 +55,7 @@ final class BranchContext : Equatable {
       .disposed(by: disposeBag)
   }
 
-  func runIfNeeded() {
+  func runIfHasNewCommit() {
 
     lock.lock(); defer { lock.unlock() }
 
@@ -68,7 +68,6 @@ final class BranchContext : Equatable {
 
       do {
         if try self.hasNewCommitsShouldRun() {
-          self.sendStarted()
           try self.run()
         }
         o(.success(()))
@@ -100,86 +99,14 @@ final class BranchContext : Equatable {
   private func run() throws {
 
     do {
+
       let log = try lastCommit()
-
+      sendStarted(commitLog: log)
       try runTowerfile()
-
-      SlackSendMessage.send(
-        message: SlackMessage(
-          channel: "C2K76LQ8Z",
-          text: "",
-          as_user: true,
-          parse: "full",
-          username: "Tower",
-          attachments: [
-            .init(
-              color: "",
-              pretext: "",
-              authorName: "Tower Status",
-              authorIcon: "",
-              title: "",
-              titleLink: "",
-              text: "Task Ended",
-              imageURL: "",
-              thumbURL: "",
-              footer: "",
-              footerIcon: "",
-              fields: [
-                .init(
-                  title: "Branch",
-                  value: branchName,
-                  short: false
-                ),
-                .init(
-                  title: "Commit",
-                  value: log,
-                  short: false
-                )
-              ]
-            )
-          ]
-        )
-      )
-
+      sendEnded(commitLog: log)
     } catch {
       Log.error(error)
-
-      SlackSendMessage.send(
-        message: SlackMessage(
-          channel: nil,
-          text: "",
-          as_user: true,
-          parse: "full",
-          username: "Tower",
-          attachments: [
-            .init(
-              color: "",
-              pretext: "",
-              authorName: "Tower Status",
-              authorIcon: "",
-              title: "",
-              titleLink: "",
-              text: "Task Failed",
-              imageURL: "",
-              thumbURL: "",
-              footer: "",
-              footerIcon: "",
-              fields: [
-                .init(
-                  title: "Branch",
-                  value: branchName,
-                  short: false
-                ),
-                .init(
-                  title: "Error",
-                  value: error.localizedDescription,
-                  short: false
-                )
-              ]
-            )
-          ]
-        )
-      )
+      sendError(error: error)
     }
   }
 
@@ -294,7 +221,7 @@ final class BranchContext : Equatable {
     return try shellOut(to: c, at: path.string)
   }
 
-  private func sendStarted() {
+  private func sendStarted(commitLog: String) {
     SlackSendMessage.send(
       message: SlackMessage(
         channel: "C2K76LQ8Z",
@@ -320,6 +247,91 @@ final class BranchContext : Equatable {
                 title: "Branch",
                 value: branchName,
                 short: true
+              ),
+              .init(
+                title: "Commit",
+                value: commitLog,
+                short: false
+              )
+            ]
+          )
+        ]
+      )
+    )
+  }
+
+  private func sendEnded(commitLog: String) {
+
+    SlackSendMessage.send(
+      message: SlackMessage(
+        channel: "C2K76LQ8Z",
+        text: "",
+        as_user: true,
+        parse: "full",
+        username: "Tower",
+        attachments: [
+          .init(
+            color: "",
+            pretext: "",
+            authorName: "Tower Status",
+            authorIcon: "",
+            title: "",
+            titleLink: "",
+            text: "Task Ended",
+            imageURL: "",
+            thumbURL: "",
+            footer: "",
+            footerIcon: "",
+            fields: [
+              .init(
+                title: "Branch",
+                value: branchName,
+                short: false
+              ),
+              .init(
+                title: "Commit",
+                value: commitLog,
+                short: false
+              )
+            ]
+          )
+        ]
+      )
+    )
+  }
+
+  private func sendError(error: Error) {
+
+    SlackSendMessage.send(
+      message: SlackMessage(
+        channel: nil,
+        text: "",
+        as_user: true,
+        parse: "full",
+        username: "Tower",
+        attachments: [
+          .init(
+            color: "",
+            pretext: "",
+            authorName: "Tower Status",
+            authorIcon: "",
+            title: "",
+            titleLink: "",
+            text: "Task Failed",
+            imageURL: "",
+            thumbURL: "",
+            footer: "",
+            footerIcon: "",
+            fields: [
+              .init(
+                title: "Branch",
+                value: branchName,
+                short: false
+              ),
+              .init(
+                title: "Error",
+                value: error.localizedDescription,
+                short: false
               )
             ]
           )
