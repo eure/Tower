@@ -125,7 +125,9 @@ final class BranchContext : Equatable {
     try pull()
     let latestCommitHash = lastCommitHash()
 
-    precondition(oldestCommitHash != latestCommitHash, "You said 'we have new commits!'")
+    if oldestCommitHash == latestCommitHash {
+      Log.error("You said 'we have new commits!'")
+    }
 
     guard try hasShouldRunCommits(latestHash: latestCommitHash, oldestHash: oldestCommitHash) else {
       return false
@@ -171,9 +173,10 @@ final class BranchContext : Equatable {
   private func pull() throws {
     Log.verbose("[Branch : \(branchName)", "pulling")
     try runShellInDirectory("git reset --hard origin/\(branchName)")
-
     let hasNewCommits = try self.hasNewCommits()
-    precondition(hasNewCommits == false, "Pull has failed")
+    if hasNewCommits == false {
+      Log.error("Pull has failed")
+    }
   }
 
   private func lastCommit() throws -> String {
