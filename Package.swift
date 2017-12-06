@@ -28,6 +28,7 @@ let package = Package(
       dependencies: [
         "Tower",
         "Commander",
+        "PathKit",
       ]),
     .target(
       name: "Tower",

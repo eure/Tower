@@ -1,0 +1,8 @@
+{
+  "workingDirectoryPath" : "",
+  "gitURL" : "",
+  "pathForShell" : "",
+  "branchMatchingPattern" : "",
+  "maxConcurrentTaskCount" : 1,
+  "logIncomingWebhookURL" : ""
+}

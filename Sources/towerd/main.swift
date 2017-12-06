@@ -4,19 +4,12 @@ import Foundation
 import Commander
 
 command(
-  Argument<String>("Work Dir"),
-  Argument<String>("Git URL"),
-  Option<String>("PATH", "", flag: "P", description: "Specify PATH on Process"),
-  Option<String>("branch_pattern", "", flag: "b", description: "Expression for Branch")
-) { path, url, PATH, branchPattern in
+  Argument<String>("path to config.json")
+) { path in
 
-  Session(
-    workingDirectoryPath: path,
-    gitURLString: url,
-    loadPathForTowerfile: PATH.isEmpty ? nil : PATH,
-    branchPattern: branchPattern
-    )
-    .start()
+  let configURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
+
+  Session(config: Config.load(url: configURL)).start()
 
   RunLoop.main.run()
   }

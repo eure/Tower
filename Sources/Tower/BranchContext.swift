@@ -9,6 +9,7 @@ import Foundation
 import ShellOut
 import RxSwift
 import PathKit
+import Bulk
 
 final class BranchContext : Equatable {
 
@@ -26,16 +27,19 @@ final class BranchContext : Equatable {
   private let lock = NSRecursiveLock()
   private let queue = PublishSubject<Single<Void>>()
   private let disposeBag = DisposeBag()
+  private let log: Logger
 
   init(
     path: Path,
     branchName: String,
-    loadPathForTowerfile: String?
+    loadPathForTowerfile: String?,
+    log: Logger
     ) {
     
     self.path = path
     self.branchName = branchName
     self.loadPathForTowerfile = loadPathForTowerfile
+    self.log = log
 
     queue
       .mapWithIndex { task, i in
@@ -60,7 +64,7 @@ final class BranchContext : Equatable {
     lock.lock(); defer { lock.unlock() }
 
     guard isRunning == false else {
-      Log.verbose("[\(branchName)] is running, skip polling")
+      log.verbose("[\(branchName)] is running, skip polling")
       return
     }
 
@@ -105,7 +109,7 @@ final class BranchContext : Equatable {
       try runTowerfile()
       sendEnded(commitLog: log)
     } catch {
-      Log.error(error)
+      log.error(error)
       sendError(error: error)
     }
   }
@@ -126,7 +130,7 @@ final class BranchContext : Equatable {
     let latestCommitHash = lastCommitHash()
 
     if oldestCommitHash == latestCommitHash {
-      Log.error("You said 'we have new commits!'")
+      log.error("You said 'we have new commits!'")
     }
 
     guard try hasShouldRunCommits(latestHash: latestCommitHash, oldestHash: oldestCommitHash) else {
@@ -154,10 +158,10 @@ final class BranchContext : Equatable {
     let branch = try runShellInDirectory("git rev-parse --abbrev-ref HEAD")
 
     if branchName != branch {
-      Log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
+      log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
     }
 
-    Log.info("[Branch : \(branchName)]")
+    log.info("[Branch : \(branchName)]")
     let result = try runShellInDirectory("git fetch")
 
     if result.contains("(forced update)") {
@@ -171,11 +175,11 @@ final class BranchContext : Equatable {
   }
 
   private func pull() throws {
-    Log.verbose("[Branch : \(branchName)", "pulling")
+    log.verbose("[Branch : \(branchName)", "pulling")
     try runShellInDirectory("git reset --hard origin/\(branchName)")
     let hasNewCommits = try self.hasNewCommits()
     if hasNewCommits == false {
-      Log.error("Pull has failed")
+      log.error("Pull has failed")
     }
   }
 
@@ -186,9 +190,9 @@ final class BranchContext : Equatable {
   private func runTowerfile() throws {
 
     do {
-      Log.info("[Branch : \(branchName)]", "Run towerfile")
-      let log = try lastCommit()
-      Log.info("[Branch : \(branchName)]\n\(log)", "\n")
+      log.info("[Branch : \(branchName)]", "Run towerfile")
+      let commitLog = try lastCommit()
+      log.info("[Branch : \(branchName)]\n\(commitLog)", "\n")
 
       do {
         let p = Process()
@@ -215,7 +219,7 @@ final class BranchContext : Equatable {
       })
 
     } catch {
-      Log.error(error)
+      log.error(error)
     }
   }
 

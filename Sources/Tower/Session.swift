@@ -4,39 +4,7 @@ import RxSwift
 import Bulk
 import ShellOut
 import PathKit
-
-let Log: Logger = {
-  
-  let l = Logger()
-  
-  l.add(pipeline: Pipeline(
-    plugins: [
-      LevelFilterPlugin.init(ignoreLevels: [.verbose, .debug, .info])
-    ],
-    targetConfiguration: Pipeline.TargetConfiguration(
-      formatter: TowerFormatter(),
-      target: ConsoleTarget()
-    )
-    )
-  )
-
-  l.add(pipeline:
-    AsyncPipeline(
-      plugins: [],
-      bulkConfiguration: Pipeline.BulkConfiguration.init(buffer: MemoryBuffer(size: 10), timeout: .seconds(20)),
-      targetConfiguration: Pipeline.TargetConfiguration.init(
-        formatter: RawFormatter(),
-        target: SlackTarget.init(
-          incomingWebhookURLString: "https://hooks.slack.com/services/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",
-          username: "Tower"
-        )
-      ),
-      queue: DispatchQueue.global(qos: .utility)
-    )
-  )
-
-  return l
-}()
+import Bulk
 
 protocol BranchType {
   var name: String { get }
@@ -73,6 +41,41 @@ public final class Session {
       return remote.hashValue ^ name.hashValue
     }
   }
+
+  private lazy var log: Logger = {
+
+    let l = Logger()
+
+    l.add(pipeline: Pipeline(
+      plugins: [
+        LevelFilterPlugin.init(ignoreLevels: [.verbose, .debug, .info])
+      ],
+      targetConfiguration: Pipeline.TargetConfiguration(
+        formatter: TowerFormatter(),
+        target: ConsoleTarget()
+      )
+      )
+    )
+
+    l.add(pipeline:
+      AsyncPipeline(
+        plugins: [],
+        bulkConfiguration: Pipeline.BulkConfiguration.init(buffer: MemoryBuffer(size: 10), timeout: .seconds(20)),
+        targetConfiguration: Pipeline.TargetConfiguration.init(
+          formatter: RawFormatter(),
+          target: SlackTarget.init(
+            incomingWebhookURLString: "https://hooks.slack.com/services/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",
+            username: "Tower"
+          )
+        ),
+        queue: DispatchQueue.global(qos: .utility)
+      )
+    )
+
+    return l
+  }()
+
+  public let config: Config
   
   public let workingDirectoryPath: Path
   public let gitURLString: String
@@ -93,17 +96,14 @@ public final class Session {
     return workingDirectoryPath + "branches"
   }
   
-  public init(
-    workingDirectoryPath: String,
-    gitURLString: String,
-    loadPathForTowerfile: String?,
-    branchPattern: String = ""
-    ) {
+  public init(config: Config) {
+
+    self.config = config
     
-    self.workingDirectoryPath = Path(workingDirectoryPath).absolute()
-    self.gitURLString = gitURLString
-    self.loadPathForTowerfile = loadPathForTowerfile
-    self.branchPattern = branchPattern
+    self.workingDirectoryPath = Path(config.workingDirectoryPath).absolute()
+    self.gitURLString = config.gitURL
+    self.loadPathForTowerfile = config.pathForShell
+    self.branchPattern = config.branchMatchingPattern
   }
   
   public func start() {
@@ -114,7 +114,7 @@ public final class Session {
 
       print("LogFilePath => \(logFilePath)")
 
-      Log.add(pipeline:
+      log.add(pipeline:
         AsyncPipeline(
           plugins: [],
           bulkConfiguration: nil,
@@ -126,13 +126,13 @@ public final class Session {
         )
       )
       
-      Log.info("Process Path:", CommandLine.arguments.first ?? "")
-      Log.info("WorkingDirectory:", workingDirectoryPath)
-      Log.info("Git-URL:", gitURLString)
-      Log.info("Specified PATH:", loadPathForTowerfile ?? "NONE")
-      Log.info("Session Start")
+      log.info("Process Path:", CommandLine.arguments.first ?? "")
+      log.info("WorkingDirectory:", workingDirectoryPath)
+      log.info("Git-URL:", gitURLString)
+      log.info("Specified PATH:", loadPathForTowerfile ?? "NONE")
+      log.info("Session Start")
       
-      Log.info("""
+      log.info("""
         
         PATH : \(try shellOut(to: "echo $PATH"))
         ENV  : \(try shellOut(to: "env"))
@@ -202,7 +202,7 @@ public final class Session {
           do {
             try self.createBranchContexts().forEach { $0.runIfHasNewCommit() }
           } catch {
-            Log.error(error)
+            self.log.error(error)
           }
         })
         .disposed(by: disposeBag)
@@ -213,11 +213,11 @@ public final class Session {
   }
   
   private func clone() throws {
-    Log.info("Start Clone BaseRipogitory")
+    log.info("Start Clone BaseRipogitory")
     try shellOut(to: "git clone --depth 1 \(gitURLString) \(basePath.string)", at: workingDirectoryPath.string)
     try shellOut(to: "git remote set-branches origin '*'", at: basePath.string)
     try shellOut(to: "git fetch", at: basePath.string)
-    Log.info("Complete Clone BaseRipogitory")
+    log.info("Complete Clone BaseRipogitory")
   }
   
   private func fetch() throws {
@@ -237,7 +237,8 @@ public final class Session {
         let c = BranchContext(
           path: branchesPath + Path(branchName) + branchDirectoryName,
           branchName: branchName,
-          loadPathForTowerfile: loadPathForTowerfile
+          loadPathForTowerfile: loadPathForTowerfile,
+          log: log
         )
         self.contexts[branchName] = c
         contexts.append(c)
@@ -285,7 +286,7 @@ public final class Session {
   
   private func deleteBranchDirectory(branchName: String) {
     
-    Log.info("Delete branch", branchName)
+    log.info("Delete branch", branchName)
     
     guard branchName.isEmpty == false else { return }
 
@@ -293,7 +294,7 @@ public final class Session {
       let path = branchesPath + branchName + branchDirectoryName
       try path.delete()
     } catch {
-      Log.error(error)
+      log.error(error)
     }
   }
   
@@ -303,7 +304,7 @@ public final class Session {
   
   private func shallowCloneToWorkingDirectory(branch: RemoteBranch) throws -> Path {
     let path = branchesPath + branch.name + branchDirectoryName
-    Log.info("Clone", path)
+    log.info("Clone", path)
 
     do {
       try shellOut(to: "git clone --depth 1 \(remotePath()) -b \(branch.name) \(path.absolute().string)", at: basePath.string)
