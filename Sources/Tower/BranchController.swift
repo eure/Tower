@@ -1,5 +1,5 @@
 //
-//  BranchContext.swift
+//  BranchController.swift
 //  Tower
 //
 //  Created by muukii on 9/29/17.
@@ -11,16 +11,14 @@ import RxSwift
 import PathKit
 import Bulk
 
-final class BranchContext : Equatable {
+final class BranchController : Equatable {
 
-  static func == (l: BranchContext, r: BranchContext) -> Bool {
-    guard l.path == r.path else { return false }
-    guard l.branchName == r.branchName else { return false }
+  static func == (l: BranchController, r: BranchController) -> Bool {
+    guard l.branch == r.branch else { return false }
     return true
   }
 
-  let path: Path
-  let branchName: String
+  let branch: LocalBranch
   let loadPathForTowerfile: String?
   var isRunning: Bool = false
 
@@ -30,14 +28,12 @@ final class BranchContext : Equatable {
   private let log: Logger
 
   init(
-    path: Path,
-    branchName: String,
+    branch: LocalBranch,
     loadPathForTowerfile: String?,
     log: Logger
     ) {
-    
-    self.path = path
-    self.branchName = branchName
+
+    self.branch = branch
     self.loadPathForTowerfile = loadPathForTowerfile
     self.log = log
 
@@ -64,7 +60,7 @@ final class BranchContext : Equatable {
     lock.lock(); defer { lock.unlock() }
 
     guard isRunning == false else {
-      log.verbose("[\(branchName)] is running, skip polling")
+      log.verbose("[\(branch.name)] is running, skip polling")
       return
     }
 
@@ -155,28 +151,28 @@ final class BranchContext : Equatable {
 
   private func hasNewCommits() throws -> Bool {
 
-    let branch = try runShellInDirectory("git rev-parse --abbrev-ref HEAD")
+    let _branch = try runShellInDirectory("git rev-parse --abbrev-ref HEAD")
 
-    if branchName != branch {
-      log.warn("[Branch : \(branchName)]", "Wrong branch : \(branch)")
+    if branch.name != _branch {
+      log.warn("[Branch : \(branch.name)]", "Wrong branch : \(_branch)")
     }
 
-    log.info("[Branch : \(branchName)]")
+    log.info("[Branch : \(branch.name)]")
     let result = try runShellInDirectory("git fetch")
 
     if result.contains("(forced update)") {
-      try runShellInDirectory("git reset --hard origin/\(branchName)")
+      try runShellInDirectory("git reset --hard origin/\(branch.name)")
       return true
     }
 
-    let r = try runShellInDirectory("git rev-list --count \(branchName)...origin/\(branchName)")
+    let r = try runShellInDirectory("git rev-list --count \(branch.name)...origin/\(branch.name)")
     let behinded = (Int(r) ?? 0) > 0
     return behinded
   }
 
   private func pull() throws {
-    log.verbose("[Branch : \(branchName)", "pulling")
-    try runShellInDirectory("git reset --hard origin/\(branchName)")
+    log.verbose("[Branch : \(branch.name)", "pulling")
+    try runShellInDirectory("git reset --hard origin/\(branch.name)")
     let hasNewCommits = try self.hasNewCommits()
     if hasNewCommits == false {
       log.error("Pull has failed")
@@ -190,9 +186,9 @@ final class BranchContext : Equatable {
   private func runTowerfile() throws {
 
     do {
-      log.info("[Branch : \(branchName)]", "Run towerfile")
+      log.info("[Branch : \(branch.name)]", "Run towerfile")
       let commitLog = try lastCommit()
-      log.info("[Branch : \(branchName)]\n\(commitLog)", "\n")
+      log.info("[Branch : \(branch.name)]\n\(commitLog)", "\n")
 
       do {
         let p = Process()
@@ -209,13 +205,13 @@ final class BranchContext : Equatable {
 
       let p = Process()
       p.launchBash(
-        with: "cd \"\(path)\" && sh .towerfile",
+        with: "cd \"\(branch.path.absolute().string)\" && sh .towerfile",
         loadPATH: loadPathForTowerfile,
         output: { (s) in
-          print("[\(self.branchName)]", s, separator: "", terminator: "")
+          print("[\(self.branch.name)]", s, separator: "", terminator: "")
       },
         error: { (s) in
-          print("[\(self.branchName)]", s, separator: "", terminator: "")
+          print("[\(self.branch.name)]", s, separator: "", terminator: "")
       })
 
     } catch {
@@ -225,7 +221,7 @@ final class BranchContext : Equatable {
 
   @discardableResult
   private func runShellInDirectory(_ c: String) throws -> String {
-    return try shellOut(to: c, at: path.string)
+    return try shellOut(to: c, at: branch.path.absolute().string)
   }
 
   private func sendStarted(commitLog: String) {
@@ -252,7 +248,7 @@ final class BranchContext : Equatable {
             fields: [
               .init(
                 title: "Branch",
-                value: branchName,
+                value: branch.name,
                 short: true
               ),
               .init(
@@ -292,7 +288,7 @@ final class BranchContext : Equatable {
             fields: [
               .init(
                 title: "Branch",
-                value: branchName,
+                value: branch.name,
                 short: false
               ),
               .init(
@@ -332,7 +328,7 @@ final class BranchContext : Equatable {
             fields: [
               .init(
                 title: "Branch",
-                value: branchName,
+                value: branch.name,
                 short: false
               ),
               .init(

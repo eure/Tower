@@ -6,13 +6,18 @@ import PackageDescription
 let package = Package(
   name: "Tower",
   products: [
-    // Products define the executables and libraries produced by a package, and make them visible to other packages.
     .executable(
       name: "towerd",
-      targets: ["towerd"]),
+      targets: ["towerd"]
+    ),
     .library(
       name: "Tower",
-      targets: ["towerd"]),
+      targets: ["Tower"]
+    ),
+    .library(
+      name: "GitCommand",
+      targets: ["GitCommand"]
+    )
   ],
   dependencies: [
     .package(url: "https://github.com/JohnSundell/ShellOut.git", from: "1.2.1"),
@@ -31,6 +36,9 @@ let package = Package(
         "PathKit",
       ]),
     .target(
+      name: "GitCommand"
+    ),
+    .target(
       name: "Tower",
       dependencies: [
         "Require",
@@ -38,7 +46,9 @@ let package = Package(
         "ShellOut",
         "RxSwift",
         "PathKit",
+        "GitCommand",
       ]),
+    
     .testTarget(
       name: "TowerTests",
       dependencies: ["Tower"]),

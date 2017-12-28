@@ -6,41 +6,42 @@ import ShellOut
 import PathKit
 import Bulk
 
-protocol BranchType {
+protocol BranchType : Hashable {
   var name: String { get }
 }
 
+struct LocalBranch : BranchType {
+
+  static func == (l: LocalBranch, r: LocalBranch) -> Bool {
+    guard l.name == r.name else { return false }
+    return true
+  }
+
+  let name: String
+  let path: Path
+
+  var hashValue: Int {
+    return name.hashValue
+  }
+}
+
+struct RemoteBranch : BranchType {
+
+  static func == (l: RemoteBranch, r: RemoteBranch) -> Bool {
+    guard l.remote == r.remote else { return false }
+    guard l.name == r.name else { return false }
+    return true
+  }
+
+  let remote: String
+  let name: String
+
+  var hashValue: Int {
+    return remote.hashValue ^ name.hashValue
+  }
+}
+
 public final class Session {
-  
-  struct LocalBranch : BranchType, Hashable {
-    
-    static func == (l: LocalBranch, r: LocalBranch) -> Bool {
-      guard l.name == r.name else { return false }
-      return true
-    }
-    
-    let name: String
-    
-    var hashValue: Int {
-      return name.hashValue
-    }
-  }
-  
-  struct RemoteBranch : BranchType, Hashable {
-    
-    static func == (l: RemoteBranch, r: RemoteBranch) -> Bool {
-      guard l.remote == r.remote else { return false }
-      guard l.name == r.name else { return false }
-      return true
-    }
-    
-    let remote: String
-    let name: String
-    
-    var hashValue: Int {
-      return remote.hashValue ^ name.hashValue
-    }
-  }
 
   private lazy var log: Logger = {
 
@@ -64,7 +65,7 @@ public final class Session {
         targetConfiguration: Pipeline.TargetConfiguration.init(
           formatter: RawFormatter(),
           target: SlackTarget.init(
-            incomingWebhookURLString: "https://hooks.slack.com/services/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",
+            incomingWebhookURLString: config.logIncomingWebhookURL,
             username: "Tower"
           )
         ),
@@ -79,13 +80,12 @@ public final class Session {
   
   public let workingDirectoryPath: Path
   public let gitURLString: String
-  public let branchPattern: String
   public let remote: String = "origin"
   public let loadPathForTowerfile: String?
   
   private let disposeBag = DisposeBag()
   private let pollingInterval: RxTimeInterval = 10
-  private var contexts: [String : BranchContext] = [:]
+  private var contexts: [String : BranchController] = [:]
   private let branchDirectoryName = "me.muukii.tower.work"
   
   public var basePath: Path {
@@ -103,7 +103,6 @@ public final class Session {
     self.workingDirectoryPath = Path(config.workingDirectoryPath).absolute()
     self.gitURLString = config.gitURL
     self.loadPathForTowerfile = config.pathForShell
-    self.branchPattern = config.branchMatchingPattern
   }
   
   public func start() {
@@ -200,7 +199,7 @@ public final class Session {
         }
         .subscribe(onNext: { [unowned self] tasks in
           do {
-            try self.createBranchContexts().forEach { $0.runIfHasNewCommit() }
+            try self.makeBranchControllers().forEach { $0.runIfHasNewCommit() }
           } catch {
             self.log.error(error)
           }
@@ -224,55 +223,56 @@ public final class Session {
     try shellOut(to: "git fetch \(remote) --prune", at: basePath.string)
   }
   
-  private func createBranchContexts() throws -> [BranchContext] {
-    
-    let branchNames = try checkoutedBranchDirectoryNames()
-    
-    var contexts: [BranchContext] = []
-    
-    for branchName in branchNames {
-      if let c = self.contexts[branchName] {
-        contexts.append(c)
-      } else {
-        let c = BranchContext(
-          path: branchesPath + Path(branchName) + branchDirectoryName,
-          branchName: branchName,
-          loadPathForTowerfile: loadPathForTowerfile,
-          log: log
-        )
-        self.contexts[branchName] = c
-        contexts.append(c)
-      }
+  private func makeBranchControllers() throws -> [BranchController] {
+
+    let targetDir = branchesPath.absolute().string
+
+    let branchPaths = FileManager.default.findDirectoryPaths(
+      directoryName: branchDirectoryName,
+      from: branchesPath.absolute().string
+    )
+
+    let r = branchPaths
+      .map { absolutePath -> BranchController in
+
+        let path = Path(absolutePath)
+        let branchName = absolutePath
+          .replacingOccurrences(of: targetDir + "/", with: "")
+          .replacingOccurrences(of: "/" + branchDirectoryName, with: "")
+
+        if let c = contexts[branchName] {
+          return c
+        } else {
+          let branch = LocalBranch(name: branchName, path: path)
+          let c = BranchController(
+            branch: branch,
+            loadPathForTowerfile: loadPathForTowerfile,
+            log: log
+          )
+          self.contexts[branchName] = c
+          return c
+        }
     }
-    
-    return contexts
+
+    return r
   }
   
   private func checkoutTargetBranches() throws  {
     
-    let _local = try checkoutedBranchDirectoryNames()
-    let _remote = filterTargetBranch(branches: try remoteBranches())
+    let _local = Set(contexts.map { $0.value.branch })
+    let _remote = Set(filterTargetBranch(branches: try remoteBranches()))
     
     guard _remote.isEmpty == false else { return }
     
-    for deletedBranch in _local where _remote.contains(where: { $0.name == deletedBranch }) == false {
-      deleteBranchDirectory(branchName: deletedBranch)
+    for deletedBranch in _local where _remote.contains(where: { $0.name == deletedBranch.name }) == false {
+      delete(branchName: deletedBranch.name)
     }
 
-    for branch in _remote where _local.contains(where: { $0 == branch.name }) == false {
+    for branch in _remote where _local.contains(where: { $0.name == branch.name }) == false {
       _ = try shallowCloneToWorkingDirectory(branch: branch)
     }
   }
-  
-  private func localBranches() throws -> [LocalBranch] {
-    
-    let remoteBranches = try shellOut(to: "git branch --format '%(refname:short)'", at: basePath.string)
-    let names = remoteBranches.split(separator: "\n")
-    return names.map {
-      LocalBranch(name: String($0))
-    }
-  }
-  
+
   private func remoteBranches() throws -> [RemoteBranch] {
     
     let remoteBranches = try shellOut(to: "git branch --remote --format '%(refname:lstrip=3)'", at: basePath.string)
@@ -284,7 +284,7 @@ public final class Session {
       .filter { $0.name != "HEAD" }
   }
   
-  private func deleteBranchDirectory(branchName: String) {
+  private func delete(branchName: String) {
     
     log.info("Delete branch", branchName)
     
@@ -321,24 +321,16 @@ public final class Session {
   
   private func filterTargetBranch<T: BranchType>(branches: [T]) -> [T] {
     
-    guard branchPattern.isEmpty == false else {
+    guard config.branchMatchingPattern.isEmpty == false else {
       return branches
     }
     
-    let exp = try! NSRegularExpression(pattern: branchPattern, options: [])
+    let exp = try! NSRegularExpression(pattern: config.branchMatchingPattern, options: [])
     
     return branches
       .filter { branch in
       exp.matches(in: branch.name, options: [], range: NSRange.init(0..<branch.name.count)).count == 1
     }
-  }
-  
-  ///
-  ///
-  /// - Returns: 
-  private func checkoutedBranchDirectoryNames() throws -> [String] {
-    
-    return try shellOut(to: "find . -type d -name \(branchDirectoryName) | sed 's#\\./##' | xargs -n 1 dirname", at: branchesPath.absolute().string).split(separator: "\n").map { String($0) }
   }
 }
 

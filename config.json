@@ -4,5 +4,5 @@
   "pathForShell" : "",
   "branchMatchingPattern" : "",
   "maxConcurrentTaskCount" : 1,
-  "logIncomingWebhookURL" : ""
+  "logIncomingWebhookURL" : "https://hooks.slack.com/services/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"
 }
