@@ -11,6 +11,10 @@ import RxSwift
 import PathKit
 import Bulk
 
+enum CommitAttribute {
+  static let skip = "[skip tower]"
+}
+
 final class BranchController : Equatable {
 
   static func == (l: BranchController, r: BranchController) -> Bool {
@@ -22,160 +26,188 @@ final class BranchController : Equatable {
   let loadPathForTowerfile: String?
   var isRunning: Bool = false
 
-  private let lock = NSRecursiveLock()
   private let queue = PublishSubject<Single<Void>>()
   private let disposeBag = DisposeBag()
-  private let log: Logger
+  private let logger: ContextLogger
+  private let remote: String = "origin"
+  private let taskScheduler = ConcurrentDispatchQueueScheduler(qos: .default)
+
+  private let centralQueue: OperationQueue
 
   init(
     branch: LocalBranch,
     loadPathForTowerfile: String?,
-    log: Logger
+    logger: Logger,
+    centralQueue: OperationQueue
     ) {
 
+    self.centralQueue = centralQueue
     self.branch = branch
     self.loadPathForTowerfile = loadPathForTowerfile
-    self.log = log
+    self.logger = logger.context(["[\(branch.name)]"])
 
     queue
-      .mapWithIndex { task, i in
-        task.do(
-          onSubscribed: {
+      .map { [weak self] in
+        $0
+          .timeout((60 * 60), scheduler: MainScheduler.instance)
+          .do(
+            onError: { _ in
 
-        },
-          onDispose: {
-
-        }
-          )
-          .asObservable()
-          .materialize()
+          },
+            onSubscribe: {
+              self?.isRunning = true
+          },
+            onSubscribed: {
+              self?.isRunning = false
+          },
+            onDispose: {
+              self?.isRunning = false
+          })
       }
-      .concat()
+      .flatMapLatest {
+        $0.asObservable().materialize()
+      }
       .subscribe()
       .disposed(by: disposeBag)
+
+    self.logger.info("Init \(self)")
   }
 
-  func runIfHasNewCommit() {
+  deinit {
+    logger.info("Deinit \(self)")
+  }
 
-    lock.lock(); defer { lock.unlock() }
+  func prepareDestroy(completion: @escaping () -> Void) {
+    queue.dispose()
+    completion()
+  }
+
+  func runImmediately() {
 
     guard isRunning == false else {
-      log.verbose("[\(branch.name)] is running, skip polling")
+      logger.verbose("[Skip running towerfile now")
       return
     }
 
-    let task = Single<Void>.create { (o) -> Disposable in
+    logger.info("Run Immediately")
 
-      do {
-        if try self.hasNewCommitsShouldRun() {
-          try self.run()
+    let task = Single<Void>
+      .create { (o) -> Disposable in
+
+        var subscription: Disposable?
+
+        DispatchQueue.global(qos: .default).async {
+          do {
+            try self.fetchAndPull()
+            subscription = self.runTowerfile().subscribe(o)
+          } catch {
+            o(.error(error))
+          }
         }
-        o(.success(()))
-      } catch {
-        o(.error(error))
-      }
 
-      return Disposables.create()
-      }
-      .do(
-        onError: { _ in
-          
-      },
-        onSubscribe: {
-          self.isRunning = true
-      },
-        onSubscribed: {
-          self.isRunning = false
-      },
-        onDispose: {
-          self.isRunning = false
-      })
-      .timeout((60 * 60), scheduler: SerialDispatchQueueScheduler(qos: .default))
-      .subscribeOn(ConcurrentDispatchQueueScheduler(qos: .default))
+        return Disposables.create {
+          subscription?.dispose()
+        }
+    }
 
     queue.onNext(task)
   }
 
-  private func run() throws {
+  func runIfHasDifferences() {
 
-    do {
-
-      let log = try lastCommit()
-      sendStarted(commitLog: log)
-      try runTowerfile()
-      sendEnded(commitLog: log)
-    } catch {
-      log.error(error)
-      sendError(error: error)
+    guard isRunning == false else {
+      logger.verbose("[Skip running towerfile now")
+      return
     }
+
+    let task = Single<Void>
+      .create { (o) -> Disposable in
+
+        var subscription: Disposable?
+
+        DispatchQueue.global(qos: .default).async {
+          do {
+            guard try self.hasNewCommitsShouldRun() else {
+              o(.success(()))
+              return
+            }
+
+            subscription = self.runTowerfile().subscribe(o)
+
+          } catch {
+            o(.error(error))
+          }
+        }
+
+        return Disposables.create {
+          subscription?.dispose()
+        }
+    }
+
+    queue.onNext(task)
   }
 
-  private func lastCommitHash() -> CommitHash {
-    let r = try! runShellInDirectory("git rev-parse HEAD")
-    return CommitHash(sha: r)
+  private func fetchAndPull() throws {
+    try fetch()
+    try pullForced()
   }
 
   private func hasNewCommitsShouldRun() throws -> Bool {
 
-    guard try hasNewCommits() else {
-      return false
-    }
+    try fetch()
 
-    let oldestCommitHash = lastCommitHash()
-    try pull()
-    let latestCommitHash = lastCommitHash()
+    guard try obtainHasDifferences() else { return false }
+
+    let oldestCommitHash = obtainCurrentCommitHash()
+    try pullForced()
+    let latestCommitHash = obtainCurrentCommitHash()
 
     if oldestCommitHash == latestCommitHash {
-      log.error("You said 'we have new commits!'")
+      logger.warn("Pull failed")
     }
 
-    guard try hasShouldRunCommits(latestHash: latestCommitHash, oldestHash: oldestCommitHash) else {
-      return false
-    }
+    let commitMessages = try obtainCommitMessages(latestHash: latestCommitHash, oldestHash: oldestCommitHash)
+
+    guard checkShouldRun(commitMessages: commitMessages) else { return false }
 
     return true
   }
 
-  private func hasShouldRunCommits(latestHash: CommitHash, oldestHash: CommitHash) throws -> Bool {
+  private func obtainCurrentCommitHash() -> CommitHash {
+    let r = try! runShellInDirectory("git rev-parse HEAD")
+    return CommitHash(sha: r)
+  }
+
+  private func obtainCommitMessages(latestHash: CommitHash, oldestHash: CommitHash) throws -> [String] {
 
     let r = try runShellInDirectory("git log --format='%s' \(latestHash.sha)...\(oldestHash.sha)")
 
-    let line = r.split(separator: "\n")
-
-    let skipCount = line
-      .filter { String($0).hasPrefix("[skip tower]") }
-      .count
-
-    return line.count > skipCount
+    return r.split(separator: "\n").map(String.init)
   }
 
-  private func hasNewCommits() throws -> Bool {
+  private func checkShouldRun(commitMessages: [String]) -> Bool {
 
-    let _branch = try runShellInDirectory("git rev-parse --abbrev-ref HEAD")
+    return commitMessages
+      .lazy
+      .filter { $0.hasPrefix(CommitAttribute.skip) == false }
+      .isEmpty == false
+  }
 
-    if branch.name != _branch {
-      log.warn("[Branch : \(branch.name)]", "Wrong branch : \(_branch)")
-    }
+  private func fetch() throws {
+    try runShellInDirectory("git fetch")
+  }
 
-    log.info("[Branch : \(branch.name)]")
-    let result = try runShellInDirectory("git fetch")
-
-    if result.contains("(forced update)") {
-      try runShellInDirectory("git reset --hard origin/\(branch.name)")
-      return true
-    }
-
-    let r = try runShellInDirectory("git rev-list --count \(branch.name)...origin/\(branch.name)")
+  private func obtainHasDifferences() throws -> Bool {
+    let r = try runShellInDirectory("git rev-list --count \(branch.name)...\(remote)/\(branch.name)")
     let behinded = (Int(r) ?? 0) > 0
     return behinded
   }
 
-  private func pull() throws {
-    log.verbose("[Branch : \(branch.name)", "pulling")
-    try runShellInDirectory("git reset --hard origin/\(branch.name)")
-    let hasNewCommits = try self.hasNewCommits()
-    if hasNewCommits == false {
-      log.error("Pull has failed")
+  private func pullForced() throws {
+    logger.info("\(branch.name) => pulling")
+    try runShellInDirectory("git reset --hard \(remote)/\(branch.name)")
+    if try obtainHasDifferences() == true {
+      logger.error("Pull has failed")
     }
   }
 
@@ -183,39 +215,72 @@ final class BranchController : Equatable {
     return try runShellInDirectory("git log -n 1")
   }
 
-  private func runTowerfile() throws {
+  private func runTowerfile() -> Single<Void> {
 
-    do {
-      log.info("[Branch : \(branch.name)]", "Run towerfile")
-      let commitLog = try lastCommit()
-      log.info("[Branch : \(branch.name)]\n\(commitLog)", "\n")
-
-      do {
-        let p = Process()
-        p.launchBash(
-          with: "echo $PATH",
-          loadPATH: loadPathForTowerfile,
-          output: { (s) in
-            print(s, separator: "", terminator: "")
-        },
-          error: { (s) in
-            print(s, separator: "", terminator: "")
-        })
-      }
+    return Single<Void>.create { (o) -> Disposable in
 
       let p = Process()
-      p.launchBash(
-        with: "cd \"\(branch.path.absolute().string)\" && sh .towerfile",
-        loadPATH: loadPathForTowerfile,
-        output: { (s) in
-          print("[\(self.branch.name)]", s, separator: "", terminator: "")
-      },
-        error: { (s) in
-          print("[\(self.branch.name)]", s, separator: "", terminator: "")
-      })
 
-    } catch {
-      log.error(error)
+      self.centralQueue.addOperation {
+
+        do {
+
+          let _log = try self.lastCommit()
+          self.sendStarted(commitLog: _log)
+
+          self.logger.info("Task did run")
+          let commitLog = try self.lastCommit()
+          self.logger.info("\n\(commitLog)", "\n")
+
+          let command = "cd \"\(self.branch.path.absolute().string)\" && sh .towerfile"
+          let resolvedCommand: String
+          if let loadPATH = self.loadPathForTowerfile {
+            resolvedCommand = "export LANG=en_US.UTF-8 && export PATH=\(loadPATH) && " + command
+          } else {
+            resolvedCommand = "export LANG=en_US.UTF-8 && " + command
+          }
+
+          let now = Date().timeIntervalSince1970
+
+          let outputPath = self.branch.path.parent() + "\(self.branch.name)-\(now).log"
+          let errorPath = self.branch.path.parent() + "\(self.branch.name)-\(now)-error.log"
+
+          self.logger.info("LogFiles:\nOutput => \(outputPath.string)\nError => \(errorPath.string)")
+
+          FileManager.default.createFile(
+            atPath: outputPath.string,
+            contents: nil,
+            attributes: nil
+          )
+
+          FileManager.default.createFile(
+            atPath: errorPath.string,
+            contents: nil,
+            attributes: nil
+          )
+
+          let outputHandle = try FileHandle.init(forWritingTo: outputPath.url)
+          let errorHandle = try FileHandle.init(forWritingTo: errorPath.url)
+
+          try p.launchBash(
+            with: resolvedCommand,
+            outputHandle: outputHandle,
+            errorHandle: errorHandle
+          )
+
+          self.logger.info("Task did finish")
+
+          self.sendEnded(commitLog: _log)
+
+        } catch {
+          self.logger.error("Task did fail :", error)
+          self.sendError(error: error)
+        }
+      }
+
+      return Disposables.create {
+        p.terminate()
+      }
     }
   }
 

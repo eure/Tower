@@ -11,10 +11,10 @@ public struct Config : Decodable {
 
   public let workingDirectoryPath: String
   public let gitURL: String
-  public let pathForShell: String
+  public let pathForShell: String?
 
   /// Regex
-  public let branchMatchingPattern: String
+  public let branchMatchingPattern: String?
 
   public let maxConcurrentTaskCount: Int
 

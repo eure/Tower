@@ -1,6 +1,6 @@
 {
-  "workingDirectoryPath" : "~/tower/pairs-gl-ios",
-  "gitURL" : "git@github.com:eure/pairs-gl-ios",
+  "workingDirectoryPath" : "~/tower/test",
+  "gitURL" : "git@github.com:muukii-incubator/test-polling.git",
   "pathForShell" : null,
   "branchMatchingPattern" : null,
   "maxConcurrentTaskCount" : 3,

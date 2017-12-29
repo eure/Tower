@@ -14,14 +14,10 @@ let package = Package(
       name: "Tower",
       targets: ["Tower"]
     ),
-    .library(
-      name: "GitCommand",
-      targets: ["GitCommand"]
-    )
   ],
   dependencies: [
-    .package(url: "https://github.com/JohnSundell/ShellOut.git", from: "1.2.1"),
-    .package(url: "https://github.com/ReactiveX/RxSwift", .exact("4.0.0-beta.0")),
+    .package(url: "https://github.com/JohnSundell/ShellOut.git", .exact("2.0.0")),
+    .package(url: "https://github.com/ReactiveX/RxSwift", .exact("4.1.0")),
     .package(url: "https://github.com/muukii/Require.git", from: "1.1.0"),
     .package(url: "https://github.com/muukii/Bulk.git", from: "0.3.0"),
     .package(url: "https://github.com/kylef/PathKit.git", from: "0.8.0"),
@@ -36,19 +32,14 @@ let package = Package(
         "PathKit",
       ]),
     .target(
-      name: "GitCommand"
-    ),
-    .target(
       name: "Tower",
       dependencies: [
         "Require",
         "Bulk",
-        "ShellOut",
         "RxSwift",
+        "RxCocoa",
         "PathKit",
-        "GitCommand",
       ]),
-    
     .testTarget(
       name: "TowerTests",
       dependencies: ["Tower"]),
