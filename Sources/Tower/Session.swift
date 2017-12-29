@@ -2,7 +2,7 @@
 import Foundation
 import RxSwift
 import Bulk
-import ShellOut
+import BulkSlackTarget
 import PathKit
 import Bulk
 
@@ -69,8 +69,9 @@ public final class Session {
         targetConfiguration: Pipeline.TargetConfiguration.init(
           formatter: RawFormatter(),
           target: SlackTarget.init(
-            incomingWebhookURLString: config.logIncomingWebhookURL,
-            username: "Tower"
+            incomingWebhookURLString: config.slack.incomingWebhookURL,
+            username: "Tower",
+            channelIdentifier: config.slack.channelIdentifierForLog
           )
         ),
         queue: DispatchQueue.global(qos: .utility)
@@ -82,13 +83,12 @@ public final class Session {
 
   public let config: Config
   
-  public let workingDirectoryPath: Path
-  public let gitURLString: String
-  public let remote: String = "origin"
-  public let loadPathForTowerfile: String?
+  let workingDirectoryPath: Path
+  let gitURLString: String
+  let remote: String = "origin"
+  let loadPathForTowerfile: String?
   
   private let disposeBag = DisposeBag()
-  private let pollingInterval: RxTimeInterval = 10
   private var contexts: [LocalBranch : BranchController] = [:]
   private let branchDirectoryName = "me.muukii.tower.work"
 
@@ -107,9 +107,9 @@ public final class Session {
     self.config = config
     
     self.workingDirectoryPath = Path(config.workingDirectoryPath).absolute()
-    self.gitURLString = config.gitURL
-    self.loadPathForTowerfile = config.pathForShell
-    self.taskQueue.maxConcurrentOperationCount = config.maxConcurrentTaskCount
+    self.gitURLString = config.target.gitURL
+    self.loadPathForTowerfile = config.target.pathForShell
+    self.taskQueue.maxConcurrentOperationCount = config.target.maxConcurrentTaskCount
   }
   
   public func start() {
@@ -146,11 +146,11 @@ public final class Session {
       )
       
       if self.workingDirectoryPath.exists == false {
-        try shellOut(to: .createFolder(named: self.workingDirectoryPath.string))
+        try self.workingDirectoryPath.mkpath()
       }
       
       if branchesPath.exists == false {
-        try shellOut(to: .createFolder(named: branchesPath.string))
+        try branchesPath.mkpath()
       }
       
       if basePath.exists == false {
@@ -160,9 +160,9 @@ public final class Session {
       let scheduler = SerialDispatchQueueScheduler.init(qos: .default)
 
       Observable<Int>
-        .interval(pollingInterval, scheduler: MainScheduler.instance)
+        .interval(RxTimeInterval(config.target.pollingInterval), scheduler: MainScheduler.instance)
         .map { _ in }
-        .startWith(())       
+        .startWith(())
         .flatMapFirst {
           Single.deferred {
             Single<Void>
@@ -262,6 +262,7 @@ public final class Session {
       }
       .map { branch in
         BranchController(
+          config: config,
           branch: branch,
           loadPathForTowerfile: loadPathForTowerfile,
           logger: log,
@@ -354,7 +355,7 @@ public final class Session {
   
   private func filterTargetBranch<T: BranchType>(branches: Set<T>) -> Set<T> {
 
-    guard let pattern = config.branchMatchingPattern, pattern.isEmpty == false else {
+    guard let pattern = config.target.branchMatchingPattern, pattern.isEmpty == false else {
       return branches
     }
 
@@ -370,4 +371,3 @@ public final class Session {
     }
   }
 }
-

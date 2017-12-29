@@ -1,8 +1,15 @@
 {
   "workingDirectoryPath" : "~/tower/pairs-gl-ios",
-  "gitURL" : "git@github.com:eure/pairs-gl-ios",
-  "pathForShell" : null,
-  "branchMatchingPattern" : null,
-  "maxConcurrentTaskCount" : 3,
-  "logIncomingWebhookURL" : "https://hooks.slack.com/services/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"
+  "target" : {
+    "gitURL" : "git@github.com:eure/pairs-gl-ios",
+    "pathForShell" : null,
+    "branchMatchingPattern" : null,
+    "maxConcurrentTaskCount" : 3,
+    "pollingInterval" : 10
+  },
+  "slack" : {
+    "incomingWebhookURL" : "https://hooks.slack.com/services/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",
+    "channelIdentifierForLog" : "C7W4663PF",
+    "channelIdentifierForNotification" : "C2K76LQ8Z"
+  }
 }

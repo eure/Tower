@@ -19,7 +19,8 @@ let package = Package(
     .package(url: "https://github.com/JohnSundell/ShellOut.git", .exact("2.0.0")),
     .package(url: "https://github.com/ReactiveX/RxSwift", .exact("4.1.0")),
     .package(url: "https://github.com/muukii/Require.git", from: "1.1.0"),
-    .package(url: "https://github.com/muukii/Bulk.git", from: "0.3.0"),
+    .package(url: "https://github.com/muukii/Bulk.git", from: "0.4.0"),
+    .package(url: "https://github.com/muukii/BulkSlackTarget.git", from: "0.2.0"),
     .package(url: "https://github.com/kylef/PathKit.git", from: "0.8.0"),
     .package(url: "https://github.com/kylef/Commander.git", .exact("0.6.1")),
   ],
@@ -36,6 +37,7 @@ let package = Package(
       dependencies: [
         "Require",
         "Bulk",
+        "BulkSlackTarget",
         "RxSwift",
         "RxCocoa",
         "PathKit",

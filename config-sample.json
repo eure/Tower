@@ -1,0 +1,14 @@
+{
+  "workingDirectoryPath" : "~/tower/repo-name",
+  "target" : {
+    "gitURL" : "git@github.com:your-org/your-repo",
+    "pathForShell" : null,
+    "branchMatchingPattern" : "version.*",
+    "maxConcurrentTaskCount" : 3
+  },
+  "slack" : {
+    "incomingWebhookURL" : "https://hooks.slack.com/services/....",
+    "channelIdentifierForLog" : "ABCD1234",
+    "channelIdentifierForNotification" : "ABCD1234"
+  }
+}

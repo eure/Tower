@@ -11,6 +11,15 @@
         }
       },
       {
+        "package": "BulkSlackTarget",
+        "repositoryURL": "https://github.com/muukii/BulkSlackTarget.git",
+        "state": {
+          "branch": null,
+          "revision": "683c21c00e8d8836e758fb408522ec1a873d2eba",
+          "version": "0.2.1"
+        }
+      },
+      {
         "package": "Commander",
         "repositoryURL": "https://github.com/kylef/Commander.git",
         "state": {

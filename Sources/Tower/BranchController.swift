@@ -6,10 +6,10 @@
 //
 
 import Foundation
-import ShellOut
 import RxSwift
 import PathKit
 import Bulk
+import BulkSlackTarget
 
 enum CommitAttribute {
   static let skip = "[skip tower]"
@@ -31,16 +31,18 @@ final class BranchController : Equatable {
   private let logger: ContextLogger
   private let remote: String = "origin"
   private let taskScheduler = ConcurrentDispatchQueueScheduler(qos: .default)
-
   private let centralQueue: OperationQueue
+  private let config: Config
 
   init(
+    config: Config,
     branch: LocalBranch,
     loadPathForTowerfile: String?,
     logger: Logger,
     centralQueue: OperationQueue
     ) {
 
+    self.config = config
     self.centralQueue = centralQueue
     self.branch = branch
     self.loadPathForTowerfile = loadPathForTowerfile
@@ -290,26 +292,18 @@ final class BranchController : Equatable {
   }
 
   private func sendStarted(commitLog: String) {
-    SlackSendMessage.send(
-      message: SlackMessage(
-        channel: "C2K76LQ8Z",
+    SlackTarget.send(
+      message: SlackTarget.SlackMessage(
+        channel: config.slack.channelIdentifierForNotification,
         text: "",
         as_user: true,
         parse: "full",
         username: "Tower",
         attachments: [
           .init(
-            color: "",
-            pretext: "",
             authorName: "Tower Status",
-            authorIcon: "",
-            title: "",
-            titleLink: "",
-            text: "Task added",
-            imageURL: "",
-            thumbURL: "",
-            footer: "",
-            footerIcon: "",
+            title: "Task added",
+            text: "",
             fields: [
               .init(
                 title: "Branch",
@@ -324,32 +318,26 @@ final class BranchController : Equatable {
             ]
           )
         ]
-      )
+      ),
+      to: config.slack.incomingWebhookURL,
+      completion: {}
     )
   }
 
   private func sendEnded(commitLog: String) {
 
-    SlackSendMessage.send(
-      message: SlackMessage(
-        channel: "C2K76LQ8Z",
+    SlackTarget.send(
+      message: SlackTarget.SlackMessage(
+        channel: config.slack.channelIdentifierForNotification,
         text: "",
         as_user: true,
         parse: "full",
         username: "Tower",
         attachments: [
           .init(
-            color: "",
-            pretext: "",
             authorName: "Tower Status",
-            authorIcon: "",
-            title: "",
-            titleLink: "",
-            text: "Task Ended",
-            imageURL: "",
-            thumbURL: "",
-            footer: "",
-            footerIcon: "",
+            title: "Task Ended",
+            text: "",
             fields: [
               .init(
                 title: "Branch",
@@ -364,32 +352,26 @@ final class BranchController : Equatable {
             ]
           )
         ]
-      )
+      ),
+      to: config.slack.incomingWebhookURL,
+      completion: {}
     )
   }
 
   private func sendError(error: Error) {
 
-    SlackSendMessage.send(
-      message: SlackMessage(
-        channel: nil,
+    SlackTarget.send(
+      message: SlackTarget.SlackMessage(
+        channel: config.slack.channelIdentifierForNotification,
         text: "",
         as_user: true,
         parse: "full",
         username: "Tower",
         attachments: [
           .init(
-            color: "",
-            pretext: "",
             authorName: "Tower Status",
-            authorIcon: "",
-            title: "",
-            titleLink: "",
-            text: "Task Failed",
-            imageURL: "",
-            thumbURL: "",
-            footer: "",
-            footerIcon: "",
+            title: "Task Failed",
+            text: "",
             fields: [
               .init(
                 title: "Branch",
@@ -404,7 +386,9 @@ final class BranchController : Equatable {
             ]
           )
         ]
-      )
+      ),
+      to: config.slack.incomingWebhookURL,
+      completion: {}
     )
   }
   

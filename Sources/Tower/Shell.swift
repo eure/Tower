@@ -7,6 +7,8 @@
 
 import Foundation
 
+// Ported from https://github.com/JohnSundell/ShellOut
+
 @discardableResult
 func shellOut(to command: String,
               arguments: [String] = [],
@@ -29,6 +31,23 @@ struct ShellError: Swift.Error {
   public let outputData: Data
   /// The output of the command as a UTF8 string, as returned through `STDOUT`
   public var output: String { return outputData.shellOutput() }
+}
+
+extension ShellError: CustomStringConvertible {
+    public var description: String {
+        return """
+               ShellOut encountered an error
+               Status code: \(terminationStatus)
+               Message: "\(message)"
+               Output: "\(output)"
+               """
+    }
+}
+
+extension ShellError: LocalizedError {
+    public var errorDescription: String? {
+        return description
+    }
 }
 
 extension Process {
