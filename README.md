@@ -1,4 +1,4 @@
-# Tower
+# 🗼Tower
 
 **Watching Git branches, the new commits on each branch run scripts.**
 
