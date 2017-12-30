@@ -1,13 +1,14 @@
 # 🗼Tower
 
-**Watching Git branches, the new commits on each branch run scripts.**
+**Watching Git branches without webhook, the new commits on each branch run scripts.**
 
 ---
 
-- Tower watch Git repo that you specified.
+- Tower watch Git repogitory that you specified.
 - You push a new commit. (force-push ok)
-- Tower will find it.
+- Tower will find it by **polling**.
 - Tower fetch it, run `.towerfile` that branch has.
+- Tower send notifications to `Slack` (required settings for now.)
 
 ## Setup
 
@@ -40,6 +41,8 @@ Make `config.json` for running Tower.
 #! /bin/sh
 
 echo 'Hello Tower'
+
+fastlane deploy
 ```
 
 ## Development
