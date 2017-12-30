@@ -1,6 +1,13 @@
 # Tower
 
-**Watching git branches, the new commits on each branch run scripts.**
+**Watching Git branches, the new commits on each branch run scripts.**
+
+---
+
+- Tower watch Git repo that you specified.
+- You push a new commit. (force-push ok)
+- Tower will find it.
+- Tower fetch it, run `.towerfile` that branch has.
 
 ## Setup
 
