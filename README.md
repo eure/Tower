@@ -56,4 +56,4 @@ $ swift build
 
 ## Author
 
-@muukii
+[@muukii](https://github.com/muukii)
