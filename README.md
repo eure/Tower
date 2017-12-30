@@ -1,12 +1,35 @@
 # Tower
 
-## Usage
+**Watching git branches, the new commits on each branch run scripts.**
 
-Create `.towerfile` on root directory.
+## Setup
 
-Example `.towerfile`
+### Configuration
 
+Make `config.json` for running Tower.
+
+> ⚠️ Maybe Key will be changed.
+
+```json
+{
+  "workingDirectoryPath" : "~/tower/repo-name",
+  "target" : {
+    "gitURL" : "git@github.com:your-org/your-repo",
+    "pathForShell" : null,
+    "branchMatchingPattern" : "version.*",
+    "maxConcurrentTaskCount" : 3
+  },
+  "slack" : {
+    "incomingWebhookURL" : "https://hooks.slack.com/services/....",
+    "channelIdentifierForLog" : "ABCD1234",
+    "channelIdentifierForNotification" : "ABCD1234"
+  }
+}
 ```
+
+### Put `.towerfile` on branch on watching git repo
+
+```sh
 #! /bin/sh
 
 echo 'Hello Tower'
@@ -16,7 +39,7 @@ echo 'Hello Tower'
 
 ### Requirements
 
-Swift 4
+Swift 4.0.2
 
 ### Build
 
