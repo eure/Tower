@@ -66,8 +66,9 @@ final class BranchController : Equatable {
               self?.isRunning = false
           })
       }
-      .flatMapLatest {
-        $0.asObservable().materialize()
+      .flatMap {
+        $0.asObservable()
+          .materialize()
       }
       .subscribe()
       .disposed(by: disposeBag)
@@ -224,8 +225,11 @@ final class BranchController : Equatable {
       let p = Process()
 
       self.centralQueue.addOperation {
-
         do {
+
+          let p = Process()
+
+          processRef = p
 
           let _log = try self.lastCommit()
           self.sendStarted(commitLog: _log)
@@ -295,7 +299,7 @@ final class BranchController : Equatable {
     SlackTarget.send(
       message: SlackTarget.SlackMessage(
         channel: config.slack.channelIdentifierForNotification,
-        text: "",
+        text: "Task added",
         as_user: true,
         parse: "full",
         username: "Tower",
@@ -329,7 +333,7 @@ final class BranchController : Equatable {
     SlackTarget.send(
       message: SlackTarget.SlackMessage(
         channel: config.slack.channelIdentifierForNotification,
-        text: "",
+        text: "Task Ended",
         as_user: true,
         parse: "full",
         username: "Tower",
@@ -363,7 +367,7 @@ final class BranchController : Equatable {
     SlackTarget.send(
       message: SlackTarget.SlackMessage(
         channel: config.slack.channelIdentifierForNotification,
-        text: "",
+        text: "Task Failed",
         as_user: true,
         parse: "full",
         username: "Tower",

@@ -110,6 +110,7 @@ public final class Session {
     self.gitURLString = config.target.gitURL
     self.loadPathForTowerfile = config.target.pathForShell
     self.taskQueue.maxConcurrentOperationCount = config.target.maxConcurrentTaskCount
+    self.taskQueue.qualityOfService = .background
   }
   
   public func start() {
