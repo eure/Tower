@@ -223,6 +223,7 @@ final class BranchController : Equatable {
     return Single<Void>.create { (o) -> Disposable in
 
       let p = Process()
+      var launched: Bool = false
 
       self.centralQueue.addOperation {
         do {
@@ -272,6 +273,8 @@ final class BranchController : Equatable {
             errorHandle: errorHandle
           )
 
+          launched = true
+
           self.logger.info("Task did finish")
 
           self.sendEnded(commitLog: _log)
@@ -283,6 +286,7 @@ final class BranchController : Equatable {
       }
 
       return Disposables.create {
+        guard p.isRunning == false, launched == true else { return }
         p.terminate()
       }
     }
