@@ -229,8 +229,6 @@ final class BranchController : Equatable {
 
           let p = Process()
 
-          processRef = p
-
           let _log = try self.lastCommit()
           self.sendStarted(commitLog: _log)
 
