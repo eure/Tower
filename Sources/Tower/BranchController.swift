@@ -26,7 +26,8 @@ final class BranchController : Equatable {
   let loadPathForTowerfile: String?
   var isRunning: Bool = false
 
-  private let queue = PublishSubject<Single<Void>>()
+  private let pollQueue = PublishSubject<Void>()
+  private let createTask = ReplaySubject<Void>.create(bufferSize: 1)
   private let disposeBag = DisposeBag()
   private let logger: ContextLogger
   private let remote: String = "origin"
@@ -48,25 +49,54 @@ final class BranchController : Equatable {
     self.loadPathForTowerfile = loadPathForTowerfile
     self.logger = logger.context(["[\(branch.name)]"])
 
-    queue
-      .map { [weak self] in
-        $0
-          .timeout((60 * 60), scheduler: MainScheduler.instance)
-          .do(
-            onError: { _ in
+    let poll = pollQueue
+      .map {
+        Maybe<Void>
+          .create { (o) -> Disposable in
 
-          },
-            onSubscribe: {
-              self?.isRunning = true
-          },
-            onSubscribed: {
-              self?.isRunning = false
-          },
-            onDispose: {
-              self?.isRunning = false
-          })
+            DispatchQueue.global(qos: .default).async {
+              do {
+                guard try self.hasNewCommitsShouldRun() else {
+                  o(.completed)
+                  return
+                }
+                o(.success(()))
+              } catch {
+                o(.error(error))
+              }
+            }
+
+            return Disposables.create {
+            }
+        }
       }
-      .flatMap {
+      .flatMapLatest {
+        $0.asObservable()
+          .catchError { _ in .empty() }
+    }
+
+    Observable.from([poll, createTask.asObservable()])
+      .merge()
+      .debug()
+      .map { _ in
+        Single<Void>
+          .create { (o) -> Disposable in
+
+            var subscription: Disposable?
+
+            do {
+              try self.fetchAndPull()
+              subscription = self.runTowerfile().subscribe(o)
+            } catch {
+              o(.error(error))
+            }
+
+            return Disposables.create {
+              subscription?.dispose()
+            }
+        }
+      }
+      .flatMapLatest {
         $0.asObservable()
           .materialize()
       }
@@ -81,76 +111,22 @@ final class BranchController : Equatable {
   }
 
   func prepareDestroy(completion: @escaping () -> Void) {
-    queue.dispose()
+    pollQueue.dispose()
     completion()
   }
 
   func runImmediately() {
 
-    guard isRunning == false else {
-      logger.verbose("[Skip running towerfile now")
-      return
-    }
-
-    logger.info("Run Immediately")
-
-    let task = Single<Void>
-      .create { (o) -> Disposable in
-
-        var subscription: Disposable?
-
-        DispatchQueue.global(qos: .default).async {
-          do {
-            try self.fetchAndPull()
-            subscription = self.runTowerfile().subscribe(o)
-          } catch {
-            o(.error(error))
-          }
-        }
-
-        return Disposables.create {
-          subscription?.dispose()
-        }
-    }
-
-    queue.onNext(task)
+    createTask.onNext(())
   }
 
   func runIfHasDifferences() {
 
-    guard isRunning == false else {
-      logger.verbose("[Skip running towerfile now")
-      return
-    }
-
-    let task = Single<Void>
-      .create { (o) -> Disposable in
-
-        var subscription: Disposable?
-
-        DispatchQueue.global(qos: .default).async {
-          do {
-            guard try self.hasNewCommitsShouldRun() else {
-              o(.success(()))
-              return
-            }
-
-            subscription = self.runTowerfile().subscribe(o)
-
-          } catch {
-            o(.error(error))
-          }
-        }
-
-        return Disposables.create {
-          subscription?.dispose()
-        }
-    }
-
-    queue.onNext(task)
+    pollQueue.onNext(())
   }
 
   private func fetchAndPull() throws {
+
     try fetch()
     try pullForced()
   }
@@ -161,29 +137,16 @@ final class BranchController : Equatable {
 
     guard try obtainHasDifferences() else { return false }
 
-    let oldestCommitHash = obtainCurrentCommitHash()
-    try pullForced()
-    let latestCommitHash = obtainCurrentCommitHash()
-
-    if oldestCommitHash == latestCommitHash {
-      logger.warn("Pull failed")
-    }
-
-    let commitMessages = try obtainCommitMessages(latestHash: latestCommitHash, oldestHash: oldestCommitHash)
+    let commitMessages = try obtainCommitMessages(latestPath: "\(remote)/\(branch.name)", oldestHash: branch.name)
 
     guard checkShouldRun(commitMessages: commitMessages) else { return false }
 
     return true
   }
 
-  private func obtainCurrentCommitHash() -> CommitHash {
-    let r = try! runShellInDirectory("git rev-parse HEAD")
-    return CommitHash(sha: r)
-  }
+  private func obtainCommitMessages(latestPath: String, oldestHash: String) throws -> [String] {
 
-  private func obtainCommitMessages(latestHash: CommitHash, oldestHash: CommitHash) throws -> [String] {
-
-    let r = try runShellInDirectory("git log --format='%s' \(latestHash.sha)...\(oldestHash.sha)")
+    let r = try runShellInDirectory("git log --format='%s' \(latestPath)...\(oldestHash)")
 
     return r.split(separator: "\n").map(String.init)
   }
@@ -223,12 +186,9 @@ final class BranchController : Equatable {
     return Single<Void>.create { (o) -> Disposable in
 
       let p = Process()
-      var launched: Bool = false
 
       self.centralQueue.addOperation {
         do {
-
-          let p = Process()
 
           let _log = try self.lastCommit()
           self.sendStarted(commitLog: _log)
@@ -273,8 +233,6 @@ final class BranchController : Equatable {
             errorHandle: errorHandle
           )
 
-          launched = true
-
           self.logger.info("Task did finish")
 
           self.sendEnded(commitLog: _log)
@@ -286,7 +244,8 @@ final class BranchController : Equatable {
       }
 
       return Disposables.create {
-        guard p.isRunning == false, launched == true else { return }
+        guard p.processIdentifier != 0 else { return }
+        self.logger.info("Process \(p.processIdentifier) terminated")
         p.terminate()
       }
     }

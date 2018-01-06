@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Result
 
 // Ported from https://github.com/JohnSundell/ShellOut
 
@@ -104,6 +105,72 @@ extension Process {
     }
 
     return outputData.shellOutput()
+  }
+
+  func launchBashAsync(
+    with command: String,
+    outputHandle: FileHandle? = nil,
+    errorHandle: FileHandle? = nil,
+    completion: @escaping (Result<String, ShellError>) -> Void
+    ) {
+
+    launchPath = "/bin/bash"
+    arguments = ["-c", command]
+
+    var outputData = Data()
+    var errorData = Data()
+
+    let outputPipe = Pipe()
+    standardOutput = outputPipe
+
+    let errorPipe = Pipe()
+    standardError = errorPipe
+
+    #if !os(Linux)
+      outputPipe.fileHandleForReading.readabilityHandler = { handler in
+        let data = handler.availableData
+        outputData.append(data)
+        outputHandle?.write(data)
+      }
+
+      errorPipe.fileHandleForReading.readabilityHandler = { handler in
+        let data = handler.availableData
+        errorData.append(data)
+        errorHandle?.write(data)
+      }
+    #endif
+
+    terminationHandler = { process in
+
+      outputHandle?.closeFile()
+      errorHandle?.closeFile()
+
+      #if !os(Linux)
+        outputPipe.fileHandleForReading.readabilityHandler = nil
+        errorPipe.fileHandleForReading.readabilityHandler = nil
+      #endif
+
+      if process.terminationStatus != 0 {
+        completion(
+          .failure(
+            ShellError(
+              terminationStatus: process.terminationStatus,
+              errorData: errorData,
+              outputData: outputData
+            )
+          )
+        )
+      }
+      completion(.success(outputData.shellOutput()))
+    }
+
+    launch()
+
+    #if os(Linux)
+      outputData = outputPipe.fileHandleForReading.readDataToEndOfFile()
+      errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+    #endif
+
   }
 }
 

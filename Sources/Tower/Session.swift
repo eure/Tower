@@ -117,7 +117,7 @@ public final class Session {
     
     do {
 
-      let logFilePath = (workingDirectoryPath + "log.txt").absolute().description
+      let logFilePath = (workingDirectoryPath + "run.log").absolute().description
 
       print("LogFilePath => \(logFilePath)")
 
