@@ -77,7 +77,6 @@ final class BranchController : Equatable {
 
     Observable.from([poll, createTask.asObservable()])
       .merge()
-      .debug()
       .map { _ in
         Single<Void>
           .create { (o) -> Disposable in
