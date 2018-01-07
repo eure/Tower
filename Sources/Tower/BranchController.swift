@@ -206,8 +206,8 @@ final class BranchController : Equatable {
 
           let now = Date().timeIntervalSince1970
 
-          let outputPath = self.branch.path.parent() + "\(self.branch.name)-\(now).log"
-          let errorPath = self.branch.path.parent() + "\(self.branch.name)-\(now)-error.log"
+          let outputPath = self.branch.path.parent() + "\(now).log"
+          let errorPath = self.branch.path.parent() + "\(now)-error.log"
 
           self.logger.info("LogFiles:\nOutput => \(outputPath.string)\nError => \(errorPath.string)")
 
