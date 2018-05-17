@@ -49,7 +49,7 @@ fastlane deploy
 
 ### Requirements
 
-Swift 4.0.2
+Swift 4.1
 
 ### Build
 
