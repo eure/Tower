@@ -11,6 +11,7 @@
 import Tower
 import Foundation
 import Commander
+import TowerAPI
 
 command(
   Argument<String>("path to config.json")
@@ -18,9 +19,11 @@ command(
 
   let configURL = URL(fileURLWithPath: (path as NSString).standardizingPath)
 
+  #if !DEBUG
   Session(config: Config.load(url: configURL)).start()
+  #endif
 
-  RunLoop.main.run()
+  try app(.detect(arguments: [CommandLine.arguments.first!])).run()
   }
   .run()
 
