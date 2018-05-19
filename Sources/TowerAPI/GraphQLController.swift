@@ -67,15 +67,15 @@ final class GraphQLController {
     print(schema)
   }
 
-  func execute(request: Request) throws -> Future<String> {
+  func execute(request: Request) throws -> Future<Response> {
 
     print(request.http.body)
 
     return try request.content
       .decode(QueryContainer.self)
-      .map({ (queryContainer) -> (String) in
+      .map({ (queryContainer) -> (Response) in
         let r = try self.schema.execute(request: queryContainer.query)
-        return r.description
+        return request.makeResponse(r.description, as: .json)
       })
 
   }
