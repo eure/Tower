@@ -19,8 +19,13 @@ struct QueryContainer : Content {
 }
 
 struct Session : OutputType {
+  let id: String
   let name: String
   let remote: String
+}
+
+struct Task : OutputType {
+
 }
 
 final class GraphQLController {
@@ -46,19 +51,20 @@ final class GraphQLController {
 
           try query.field(name: "allSessions", type: [Session].self) { _, _, _, _ in
             return [
-              Session(name: "a", remote: "a"),
-              Session(name: "b", remote: "a"),
-              Session(name: "c", remote: "a"),
+
             ]
           }
 
-          try query.field(name: "hello", type: String.self) { _, _, _, _ in
-            return "world"
+          struct TasksArguments : Arguments {
+            let sessionIdentifier: String
           }
-          try query.field(name: "hoge", type: String.self) { a, b, c, d in
-            return "fuga"
+
+          try query.field(name: "allTasks", type: [Task].self) { (_, args: TasksArguments, _, _) in
+            return []
           }
+
         }
+
       }
     } catch {
       fatalError("\(error)")

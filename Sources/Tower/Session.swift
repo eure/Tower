@@ -289,7 +289,7 @@ public final class Session {
     }
 
     return (
-      shouldRunBranches.flatMap { contexts[$0] },
+      shouldRunBranches.compactMap { contexts[$0] },
       source.map { $0.value }
     )
   }
